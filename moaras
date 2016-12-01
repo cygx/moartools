@@ -1,6 +1,85 @@
 #!/usr/bin/env perl6
 use v6;
-use asm:from<NQP>;
+use nqp;
+
+nqp::loadbytecode('nqp.moarvm');
+nqp::getcomp('nqp').eval(q:to/END/);
+my $global_cuuid := 0;
+my $assembler := nqp::getcomp('MAST');
+my %types := nqp::hash(
+    'int', int,
+    'num', num,
+    'str', str,
+    'obj', NQPMu
+);
+
+class MoarASM {
+    method ast() {
+        MAST::CompUnit.new();
+    }
+
+    method compile($ast) {
+        $assembler.assemble_and_load($ast);
+    }
+
+    method dump($ast, $file) {
+        $assembler.assemble_to_file($ast, $file);
+    }
+
+    method mainline($cu) {
+        nqp::compunitmainline($cu);
+    }
+
+    method hll($ast, $name) {
+        $ast.hll($name);
+    }
+
+    method iv($value, :$size = 64) {
+        MAST::IVal.new(:$value, :$size, signed => 1);
+    }
+
+    method uv($value, :$size = 64) {
+        MAST::IVal.new(:$value, :$size, signed => 0);
+    }
+
+    method nv($value, :$size = 64) {
+        MAST::NVal.new(:$value, :$size);
+    }
+
+    method sv($value) {
+        MAST::SVal.new(:$value);
+    }
+
+    method local($index) {
+        MAST::Local.new(:$index);
+    }
+
+    method add_local($frame, $typename) {
+        nqp::die("unknown type: $typename")
+            unless nqp::existskey(%types, $typename);
+
+        my $type := %types{$typename};
+        $frame.add_local($type);
+    }
+
+    method add_frame($ast, $name = '<anon>', $cuuid = ~$global_cuuid++) {
+        my $frame := MAST::Frame.new(:$name, :$cuuid);
+        $ast.add_frame($frame);
+        $frame;
+    }
+
+    method push_op($frame, $op, *@args) {
+        nqp::die("unknown op: $op")
+            unless nqp::existskey(%MAST::Ops::codes, $op);
+
+        nqp::push($frame.instructions(), MAST::Op.new(:$op, |@args));
+    }
+}
+
+nqp::bindcurhllsym('MoarASM', MoarASM);
+END
+
+my \asm = nqp::gethllsym('nqp', 'MoarASM');
 
 my $n = 0;
 my $line;
@@ -25,6 +104,7 @@ sub parse($src) {
 
     for $src.IO.lines(:close) {
         ++$n;
+        next if /^\#/;
 
         my ($op, @args) = .comb(/\S+|\'.*?\'/);
         next unless defined $op;
@@ -42,10 +122,14 @@ sub parse($src) {
     $ast;
 }
 
-multi MAIN(Str $src) {
-    asm.mainline(asm.compile(parse($src))).();
-}
-
 multi MAIN(Str $src, Str $dest) {
     asm.dump(parse($src), $dest);
+}
+
+multi MAIN(Str $src, Bool :$dump!) {
+    say parse($src).dump();
+}
+
+multi MAIN(Str $src, Bool :$run!, *@args) {
+    asm.mainline(asm.compile(parse($src))).(|@args);
 }
