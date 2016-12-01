@@ -74,6 +74,11 @@ class MoarASM {
 
         nqp::push($frame.instructions(), MAST::Op.new(:$op, |@args));
     }
+
+    method push_call($frame, $target) {
+        nqp::push($frame.instructions(),
+            MAST::Call.new(:$target, flags => []));
+    }
 }
 
 nqp::bindcurhllsym('MoarASM', MoarASM);
@@ -81,18 +86,19 @@ END
 
 my \asm = nqp::gethllsym('nqp', 'MoarASM');
 
-my $n = 0;
-my $line;
-
 sub arg($_) {
     when /^ (\d+) $/ { asm.uv(+~$0) }
     when /^ (<[+-]> \d+) $/ { asm.iv(+~$0) }
     when /^ \' (.*?) \' $/ { asm.sv(~$0) }
     when /^ \% (\d+) $/ { asm.local(+~$0) }
+    when /^ \& (\w+) $/ { %*frames{~$0} }
     default { die "syntax error: $_" }
 }
 
 sub parse($src) {
+    my $n = 0;
+    my $line;
+
     CATCH {
         note ~$_;
         note "[{$n}] $line";
@@ -101,6 +107,7 @@ sub parse($src) {
 
     my $ast := asm.ast;
     my $frame;
+    my %*frames;
 
     for $src.IO.lines(:close) {
         ++$n;
@@ -113,8 +120,14 @@ sub parse($src) {
 
         given $op {
             when '.hll' { asm.hll($ast, |@args) }
-            when '.frame' { $frame := asm.add_frame($ast, |@args) }
+            when '.frame' {
+                $frame := @args
+                    ?? (%*frames{@args[0]}
+                    // (%*frames{@args[0]} := asm.add_frame($ast, |@args)))
+                    !! asm.add_frame($ast);
+            }
             when '.local' { asm.add_local($frame, $_) for @args }
+            when '.call' { asm.push_call($frame, |@args.map(&arg)) }
             default { asm.push_op($frame, $op, |@args.map(&arg)) }
         }
     }
