@@ -4,8 +4,7 @@
 .frame main
 
 .frame hello
-.local str
-.alias hello %0
+.local[str] hello
 const_s @hello 'hello world'
 say @hello
 
