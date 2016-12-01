@@ -91,7 +91,6 @@ sub arg($_) {
     when /^ (<[+-]> \d+) $/ { asm.iv(+~$0) }
     when /^ \' (.*?) \' $/ { asm.sv(~$0) }
     when /^ (\w+) \: $/ { asm.sv(~$0) }
-    when /^ \\ (\w+) $/ { asm.sv(~$0) }
     when /^ \% (\d+) $/ { asm.local(+~$0) }
     when /^ \& (\w+) $/ { %*frames{~$0} }
     when /^ \@ (\w+) $/ { %*aliases{~$0} }
