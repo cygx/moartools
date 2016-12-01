@@ -1,5 +1,3 @@
-# hello world example code
-
 .hll asm
 .frame main
 
