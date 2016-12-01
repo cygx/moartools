@@ -1,0 +1,51 @@
+#!/usr/bin/env perl6
+use v6;
+use asm:from<NQP>;
+
+my $n = 0;
+my $line;
+
+sub arg($_) {
+    when /^ (\d+) $/ { asm.uv(+~$0) }
+    when /^ (<[+-]> \d+) $/ { asm.iv(+~$0) }
+    when /^ \' (.*?) \' $/ { asm.sv(~$0) }
+    when /^ \% (\d+) $/ { asm.local(+~$0) }
+    default { die "syntax error: $_" }
+}
+
+sub parse($src) {
+    CATCH {
+        note ~$_;
+        note "[{$n}] $line";
+        exit 1;
+    }
+
+    my $ast := asm.ast;
+    my $frame;
+
+    for $src.IO.lines(:close) {
+        ++$n;
+
+        my ($op, @args) = .comb(/\S+|\'.*?\'/);
+        next unless defined $op;
+
+        $line = $_;
+
+        given $op {
+            when '.hll' { asm.hll($ast, |@args) }
+            when '.frame' { $frame := asm.add_frame($ast, |@args) }
+            when '.local' { asm.add_local($frame, $_) for @args }
+            default { asm.push_op($frame, $op, |@args.map(&arg)) }
+        }
+    }
+
+    $ast;
+}
+
+multi MAIN(Str $src) {
+    asm.mainline(asm.compile(parse($src))).();
+}
+
+multi MAIN(Str $src, Str $dest) {
+    asm.dump(parse($src), $dest);
+}
