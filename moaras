@@ -14,24 +14,20 @@ my %types := nqp::hash(
 );
 
 class MoarASM {
-    method ast() {
+    method cu() {
         MAST::CompUnit.new();
     }
 
-    method compile($ast) {
-        $assembler.assemble_and_load($ast);
+    method compile($cu) {
+        $assembler.assemble_and_load($cu);
     }
 
-    method dump($ast, $file) {
-        $assembler.assemble_to_file($ast, $file);
+    method dump($cu, $file) {
+        $assembler.assemble_to_file($cu, $file);
     }
 
-    method mainline($cu) {
-        nqp::compunitmainline($cu);
-    }
-
-    method hll($ast, $name) {
-        $ast.hll($name);
+    method mainline($bc) {
+        nqp::compunitmainline($bc);
     }
 
     method iv($value, :$size = 64) {
@@ -54,6 +50,10 @@ class MoarASM {
         MAST::Local.new(:$index);
     }
 
+    method node() {
+        MAST::Node;
+    }
+
     method add_local($frame, $typename) {
         nqp::die("unknown type: $typename")
             unless nqp::existskey(%types, $typename);
@@ -62,9 +62,9 @@ class MoarASM {
         $frame.add_local($type);
     }
 
-    method add_frame($ast, $name = '<anon>', $cuuid = ~$global_cuuid++) {
+    method add_frame($cu, $name = '<anon>', $cuuid = ~$global_cuuid++) {
         my $frame := MAST::Frame.new(:$name, :$cuuid);
-        $ast.add_frame($frame);
+        $cu.add_frame($frame);
         $frame;
     }
 
@@ -75,9 +75,9 @@ class MoarASM {
         nqp::push($frame.instructions(), MAST::Op.new(:$op, |@args));
     }
 
-    method push_call($frame, $target) {
+    method push_call($frame, $target, :@flags, :$result, *@args) {
         nqp::push($frame.instructions(),
-            MAST::Call.new(:$target, flags => []));
+            MAST::Call.new(:$target, :@flags, :$result, |@args));
     }
 }
 
@@ -105,9 +105,11 @@ sub parse($src) {
         exit 1;
     }
 
-    my $ast := asm.ast;
+    my $cu := asm.cu;
     my $frame;
     my %*frames;
+    my $flags := nqp::list();
+    my $result := asm.node;
 
     for $src.IO.lines(:close) {
         ++$n;
@@ -119,20 +121,51 @@ sub parse($src) {
         $line = $_;
 
         given $op {
-            when '.hll' { asm.hll($ast, |@args) }
+            when '.hll' { $cu.hll(|@args) }
             when '.frame' {
                 $frame := @args
                     ?? (%*frames{@args[0]}
-                    // (%*frames{@args[0]} := asm.add_frame($ast, |@args)))
-                    !! asm.add_frame($ast);
+                    // (%*frames{@args[0]} := asm.add_frame($cu, |@args)))
+                    !! asm.add_frame($cu);
             }
             when '.local' { asm.add_local($frame, $_) for @args }
-            when '.call' { asm.push_call($frame, |@args.map(&arg)) }
+            when '.flags' {
+                for @args {
+                    nqp::push($flags, do {
+                        when 'obj' { 1 }
+                        when 'int' { 2 }
+                        when 'num' { 4 }
+                        when 'str' { 8 }
+                        when ':obj' { 1 +| 32 }
+                        when ':int' { 2 +| 32 }
+                        when ':num' { 4 +| 32 }
+                        when ':str' { 8 +| 32 }
+                        #when 'flat' { 64 }
+                        #when 'flatnamed' { 128 }
+                    });
+                }
+            }
+            when '.result' {
+                die "syntax error: expected 1 arg" unless @args == 1;
+                $result := arg @args[0];
+            }
+            when '.call' {
+                asm.push_call($frame, :$flags, :$result, |@args.map(&arg));
+                $flags := nqp::list();
+                $result := asm.node;
+            }
+            when '.set' {
+                for @args {
+                    when 'load' { $cu.load_frame($frame) }
+                    when 'main' { $cu.main_frame($frame) }
+                    default { die "syntax error: $_" }
+                }
+            }
             default { asm.push_op($frame, $op, |@args.map(&arg)) }
         }
     }
 
-    $ast;
+    $cu;
 }
 
 multi MAIN(Str $src, Str $dest) {
