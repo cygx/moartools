@@ -92,6 +92,7 @@ sub arg($_) {
     when /^ \' (.*?) \' $/ { asm.sv(~$0) }
     when /^ \% (\d+) $/ { asm.local(+~$0) }
     when /^ \& (\w+) $/ { %*frames{~$0} }
+    when /^ \@ (\w+) $/ { %*aliases{~$0} }
     default { die "syntax error: $_" }
 }
 
@@ -108,6 +109,7 @@ sub parse($src) {
     my $cu := asm.cu;
     my $frame;
     my %*frames;
+    my %*aliases;
     my $flags := nqp::list();
     my $result := asm.node;
 
@@ -121,8 +123,13 @@ sub parse($src) {
         $line = $_;
 
         given $op {
+            when '.alias' {
+                die "syntax error: expected 2 args" unless @args == 2;
+                %*aliases{@args[0]} := arg @args[1];
+            }
             when '.hll' { $cu.hll(|@args) }
             when '.frame' {
+                %*aliases = ();
                 $frame := @args
                     ?? (%*frames{@args[0]}
                     // (%*frames{@args[0]} := asm.add_frame($cu, |@args)))
@@ -161,6 +168,7 @@ sub parse($src) {
                     default { die "syntax error: $_" }
                 }
             }
+            when /^\./ { die "syntax error: $_" }
             default { asm.push_op($frame, $op, |@args.map(&arg)) }
         }
     }
