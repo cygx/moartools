@@ -4,11 +4,10 @@
 exit %0
 
 .frame create_knowhow_type
-.local[obj] rv how method
-.local[str] name repr
 checkarity 1 1
-param_rp_s @name 0
-const_s @repr 'KnowHOWREPR'
+.param[str] name 0
+.const[str] repr 'KnowHOWREPR'
+.local[obj] rv how method
 knowhow @how
 findmeth @method @how 'new_type'
 .flags obj :str :str
@@ -18,7 +17,7 @@ return_o @rv
 
 .frame load
 .set load
-.local str obj
-const_s %0 'create_knowhow_type'
+.const[str] fn 'create_knowhow_type'
+.local obj
 getcode %1 &create_knowhow_type
-bindcurhllsym %1 %0 %1
+bindcurhllsym %1 @fn %1

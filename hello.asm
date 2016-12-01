@@ -4,8 +4,7 @@
 .frame main
 
 .frame hello
-.local[str] hello
-const_s @hello 'hello world'
+.const[str] hello 'hello world'
 say @hello
 
 .frame main
