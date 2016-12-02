@@ -100,6 +100,99 @@ sub arg($_) {
     default { die "syntax error: $_" }
 }
 
+multi eval('.hll', *@args) {
+    $*cu.hll(|@args);
+}
+
+multi eval('.frame', *@args) {
+    %*aliases = ();
+    $*frame := @args
+        ?? (%*frames{@args[0]}
+        // (%*frames{@args[0]} := asm.add_frame($*cu, |@args)))
+        !! asm.add_frame($*cu);
+}
+
+multi eval('.set', *@args) {
+    for @args {
+        when 'load' { $*cu.load_frame($*frame) }
+        when 'main' { $*cu.main_frame($*frame) }
+        default { die "syntax error: $_" }
+    }
+}
+
+multi eval('.alias', *@args) {
+    die "syntax error: expected 2 args" unless @args == 2;
+    %*aliases{@args[0]} := arg @args[1];
+}
+
+multi eval('.local', *@args) {
+    asm.add_local($*frame, $_) for @args;
+}
+
+multi eval('.flags', *@args) {
+    for @args {
+        nqp::push($*flags, do {
+            when 'obj' { 1 }
+            when 'int' { 2 }
+            when 'num' { 4 }
+            when 'str' { 8 }
+            when ':obj' { 1 +| 32 }
+            when ':int' { 2 +| 32 }
+            when ':num' { 4 +| 32 }
+            when ':str' { 8 +| 32 }
+            #when 'flat' { 64 }
+            #when 'flatnamed' { 128 }
+        });
+    }
+}
+
+multi eval('.result', *@args) {
+    die "syntax error: expected 1 arg" unless @args == 1;
+    $*result := arg @args[0];
+}
+
+multi eval('.call', *@args) {
+    asm.push_call($*frame, :$*flags, :$*result, |@args.map(&arg));
+    $*flags := nqp::list();
+    $*result := asm.node;
+}
+
+multi eval($_, *@args) {
+    when /^ '.local[' (\w+) ']' $/ {
+        my $type := ~$0;
+        %*aliases{$_} := asm.add_local($*frame, $type)
+            for @args;
+    }
+
+    when /^ '.const[' (\w+) ']' $/ {
+        die "syntax error: expected 2 args" unless @args == 2;
+        my $type := ~$0;
+        my $local := asm.add_local($*frame, $type);
+        %*aliases{@args[0]} := $local;
+        my $op := do given $type {
+            when 'str' { 'const_s' }
+            default { die "syntax error: $_" }
+        }
+        asm.push_op($*frame, $op, $local, arg(@args[1]));
+    }
+
+    when /^ '.param[' (\w+) ']' $/ {
+        die "syntax error: expected 2 args" unless @args == 2;
+        my $type := ~$0;
+        my $local := asm.add_local($*frame, $type);
+        %*aliases{@args[0]} := $local;
+        my $op := do given $type {
+            when 'str' { 'param_rp_s' }
+            default { die "syntax error: $_" }
+        }
+        asm.push_op($*frame, $op, $local, arg(@args[1]));
+    }
+
+    when !/^ \w+ $/ { die "syntax error: $_" }
+
+    default { asm.push_op($*frame, $_, |@args.map(&arg)) }
+}
+
 sub parse($src) {
     my $n = 0;
     my $line;
@@ -110,101 +203,20 @@ sub parse($src) {
         exit 1;
     }
 
-    my $cu := asm.cu;
-    my $frame;
+    my $*cu := asm.cu;
+    my $*frame;
     my %*frames;
     my %*aliases;
-    my $flags := nqp::list();
-    my $result := asm.node;
+    my $*flags := nqp::list();
+    my $*result := asm.node;
 
     for $src.IO.lines(:close) {
-        ++$n;
-        next if /^\#/;
-
-        my ($op, @args) = .comb(/\S+|\'.*?\'/);
-        next unless defined $op;
-
-        $line = $_;
-
-        given $op {
-            when '.alias' {
-                die "syntax error: expected 2 args" unless @args == 2;
-                %*aliases{@args[0]} := arg @args[1];
-            }
-            when '.hll' { $cu.hll(|@args) }
-            when '.frame' {
-                %*aliases = ();
-                $frame := @args
-                    ?? (%*frames{@args[0]}
-                    // (%*frames{@args[0]} := asm.add_frame($cu, |@args)))
-                    !! asm.add_frame($cu);
-            }
-            when '.local' { asm.add_local($frame, $_) for @args }
-            when /^ '.local[' (\w+) ']' $/ {
-                my $type := ~$0;
-                %*aliases{$_} := asm.add_local($frame, $type)
-                    for @args;
-            }
-            when /^ '.const[' (\w+) ']' $/ {
-                die "syntax error: expected 2 args" unless @args == 2;
-                my $type := ~$0;
-                my $local := asm.add_local($frame, $type);
-                %*aliases{@args[0]} := $local;
-                my $op := do given $type {
-                    when 'str' { 'const_s' }
-                    default { die "syntax error: $_" }
-                }
-                asm.push_op($frame, $op, $local, arg(@args[1]));
-            }
-            when /^ '.param[' (\w+) ']' $/ {
-                die "syntax error: expected 2 args" unless @args == 2;
-                my $type := ~$0;
-                my $local := asm.add_local($frame, $type);
-                %*aliases{@args[0]} := $local;
-                my $op := do given $type {
-                    when 'str' { 'param_rp_s' }
-                    default { die "syntax error: $_" }
-                }
-                asm.push_op($frame, $op, $local, arg(@args[1]));
-            }
-            when '.flags' {
-                for @args {
-                    nqp::push($flags, do {
-                        when 'obj' { 1 }
-                        when 'int' { 2 }
-                        when 'num' { 4 }
-                        when 'str' { 8 }
-                        when ':obj' { 1 +| 32 }
-                        when ':int' { 2 +| 32 }
-                        when ':num' { 4 +| 32 }
-                        when ':str' { 8 +| 32 }
-                        #when 'flat' { 64 }
-                        #when 'flatnamed' { 128 }
-                    });
-                }
-            }
-            when '.result' {
-                die "syntax error: expected 1 arg" unless @args == 1;
-                $result := arg @args[0];
-            }
-            when '.call' {
-                asm.push_call($frame, :$flags, :$result, |@args.map(&arg));
-                $flags := nqp::list();
-                $result := asm.node;
-            }
-            when '.set' {
-                for @args {
-                    when 'load' { $cu.load_frame($frame) }
-                    when 'main' { $cu.main_frame($frame) }
-                    default { die "syntax error: $_" }
-                }
-            }
-            when /^\./ { die "syntax error: $_" }
-            default { asm.push_op($frame, $op, |@args.map(&arg)) }
-        }
+        ++$n, $line = $_;
+        eval |.comb(/\S+|\'.*?\'/)
+            unless /^[\#|$]/;
     }
 
-    $cu;
+    $*cu;
 }
 
 multi MAIN(Str $src, Str $dest) {
