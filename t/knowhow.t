@@ -6,7 +6,7 @@ use nqp;
 plan 3;
 
 unlink 't/knowhow.moarvm';
-qqx{$*EXECUTABLE moaras t/knowhow.asm t/knowhow.moarvm};
+qqx{$*EXECUTABLE moaras -x t/knowhow.asm};
 
 nqp::loadbytecode('t/knowhow.moarvm');
 my &create := nqp::hllize(nqp::gethllsym('asm', 'create_knowhow_type'));

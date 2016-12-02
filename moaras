@@ -211,6 +211,10 @@ multi MAIN(Str $src, Str $dest) {
     asm.dump(parse($src), $dest);
 }
 
+multi MAIN(Bool :$x!, *@src) {
+    MAIN($_, .subst(/'.asm'?$/, '.moarvm')) for @src;
+}
+
 multi MAIN(Str $src, Bool :$dump!) {
     say parse($src).dump();
 }
