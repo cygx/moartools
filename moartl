@@ -1,0 +1,154 @@
+#!/usr/bin/env perl6
+use v6;
+
+class X::MoarTL::Syntax is Exception {
+    has $.msg = '?';
+    has $.n = '?';
+    has $.line = '?';
+
+    method message {
+        "syntax error: $!msg\n[$!n] $!line";
+    }
+}
+
+class Label {
+    has $.block;
+    has $.name;
+    method start { "bra{$!block}_{$!name}" }
+    method end { "ket{$!block}_{$!name}" }
+    method asm($end?) { $end ?? self.end !! self.start }
+}
+
+class Var {
+    has $.block;
+    has $.name;
+    has $.type;
+    method asm { "var{$!block}_{$!name}" }
+}
+
+class Parser {
+    has $!lines;
+    has $!line;
+    has $!n;
+    has $!blocks;
+    has @!scopes;
+
+    submethod BUILD(:$!lines) {}
+
+    method next-line {
+        ++$!n;
+        $!line := $!lines.pull-one;
+    }
+
+    method line { $!line.trim }
+
+    method parse($code) {
+        my $*parser = Parser.new(lines => $code.lines.iterator());
+        join "\n", gather $*parser.TOP;
+    }
+
+    method bailout is hidden-from-backtrace {
+        die X::MoarTL::Syntax.new(line => self.line, :$!n);
+    }
+
+    method lookup($name) {
+        for @!scopes {
+            return .{$name}
+                if .{$name}:exists;
+        }
+        Nil;
+    }
+
+    method TOP {
+        my %scope;
+        @!scopes.unshift(%scope);
+        LEAVE @!scopes.shift;
+
+        while ($_ := self.next-line) !=:= IterationEnd {
+            $_ := .trim;
+            when /^\#/ { next }
+            when /^ fn \h+ (\w+) $/ { take ".frame $0" }
+            when /^ fn \h+ (\w+) '()' \h+ '{' $/ {
+                take ".frame $0";
+                $!blocks = 0;
+                my $name = ~$0;
+                my $label = Label.new(:$name, block => $!blocks);
+                %scope{$name} = $label;
+                self.BLOCK($label);
+            }
+            default { self.bailout }
+        }
+    }
+
+    my token expression {
+        || str '(' (\w+) ')' {
+            my $var = $*parser.lookup(~$0);
+            take "    .local[str] tmp{$*block}_s{$*tmp++}";
+        }
+    }
+
+    method BLOCK($label) {
+        my $*block = ++$!blocks;
+        my $*tmp = 0;
+
+        my %scope;
+        @!scopes.unshift(%scope);
+        LEAVE @!scopes.shift;
+
+        take ".{$label.asm}:";
+
+        while ($_ := self.next-line) !=:= IterationEnd {
+            $_ := .trim;
+            when /^\#/ { next }
+            when /^ int \h+ (\w+) \h+ '=' \h+ (\d+) $/ {
+                my $name = ~$0;
+                my $type = 'int';
+                my $var = Var.new(:$name, :$type, :$*block);
+                %scope{$name} = $var;
+                take "    .const[int] {$var.asm} $1";
+            }
+            when /^ dec \h+ (\w+) $/ {
+                my $name = ~$0;
+                my $var = self.lookup($name);
+                take "    dec_i \@{$var.asm}";
+            }
+            when /^:s print <expression>$/ {
+            }
+            when /^:s next (\w+) if (\w+)$/ {
+                my $label = self.lookup(~$0);
+                my $var = self.lookup(~$1);
+                take "    if_i \@{$var.asm} \@{$label.asm}";
+            }
+            when /^ '.' (\w+) \h+ '{' $/ {
+                my $name = ~$0;
+                my $label = Label.new(:$name, :$*block);
+                %scope{$name} = $label;
+                self.BLOCK($label);
+            }
+            when /^ '}' $/ {
+                take ".{$label.asm(1)}:";
+                return True;
+            }
+            default { self.bailout }
+        }
+        die X::MoarTL::Syntax(:$!n, line => self.line, msg => 'unclosed block');
+    }
+}
+
+multi MAIN(Str $src) {
+    put Parser.parse($src.IO.slurp);
+    CATCH {
+        default {
+            put "#.error {.^name}";
+            note .message;
+        }
+    }
+}
+
+multi MAIN(*@src where $_ > 1) {
+    for @src {
+        put "#.file $_";
+        MAIN($_);
+        print "\n";
+    }
+}
