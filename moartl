@@ -65,6 +65,8 @@ sub lookup($name) {
 sub block($name) { ... }
 
 sub parse($src --> Nil) {
+    put ".hll tiny";
+
     my %*scope;
 
     $n = 0;
