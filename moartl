@@ -4,154 +4,139 @@
 
 use v6;
 
+my $lines;
+my $line;
+my $n;
+
+my @scopes;
+my $blocks;
+
 class X::MoarTL::Syntax is Exception {
-    has $.msg = '?';
-    has $.n = '?';
-    has $.line = '?';
-
-    method message {
-        "syntax error: $!msg\n[$!n] $!line";
-    }
+    has $.msg;
+    has $.n;
+    has $.line;
+    method new($msg) { self.bless(:$msg, :$n, :$line) }
+    method message { "syntax error: $!msg\n[$!n] $!line" }
 }
 
-class Label {
-    has $.block;
-    has $.name;
-    method start { "bra{$!block}_{$!name}" }
-    method end { "ket{$!block}_{$!name}" }
-    method asm($end?) { $end ?? self.end !! self.start }
-}
-
-class Var {
-    has $.block;
-    has $.name;
-    has $.type;
-    method asm { "var{$!block}_{$!name}" }
-}
-
-class Parser {
-    has $!lines;
-    has $!line;
-    has $!n;
-    has $!blocks;
-    has @!scopes;
-
-    submethod BUILD(:$!lines) {}
-
-    method next-line {
-        ++$!n;
-        $!line := $!lines.pull-one;
-    }
-
-    method line { $!line.trim }
-
-    method parse($code) {
-        my $*parser = Parser.new(lines => $code.lines.iterator());
-        join "\n", gather $*parser.TOP;
-    }
-
-    method bailout is hidden-from-backtrace {
-        die X::MoarTL::Syntax.new(line => self.line, :$!n);
-    }
-
-    method lookup($name) {
-        for @!scopes {
-            return .{$name}
-                if .{$name}:exists;
-        }
-        Nil;
-    }
-
-    method TOP {
-        my %scope;
-        @!scopes.unshift(%scope);
-        LEAVE @!scopes.shift;
-
-        while ($_ := self.next-line) !=:= IterationEnd {
-            $_ := .trim;
-            when /^\#/ { next }
-            when /^ fn \h+ (\w+) $/ { take ".frame $0" }
-            when /^ fn \h+ (\w+) '()' \h+ '{' $/ {
-                take ".frame $0";
-                $!blocks = 0;
-                my $name = ~$0;
-                my $label = Label.new(:$name, block => $!blocks);
-                %scope{$name} = $label;
-                self.BLOCK($label);
-            }
-            default { self.bailout }
-        }
-    }
-
-    my token expression {
-        || str '(' (\w+) ')' {
-            my $var = $*parser.lookup(~$0);
-            take "    .local[str] tmp{$*block}_s{$*tmp++}";
-        }
-    }
-
-    method BLOCK($label) {
-        my $*block = ++$!blocks;
-        my $*tmp = 0;
-
-        my %scope;
-        @!scopes.unshift(%scope);
-        LEAVE @!scopes.shift;
-
-        take ".{$label.asm}:";
-
-        while ($_ := self.next-line) !=:= IterationEnd {
-            $_ := .trim;
-            when /^\#/ { next }
-            when /^ int \h+ (\w+) \h+ '=' \h+ (\d+) $/ {
-                my $name = ~$0;
-                my $type = 'int';
-                my $var = Var.new(:$name, :$type, :$*block);
-                %scope{$name} = $var;
-                take "    .const[int] {$var.asm} $1";
-            }
-            when /^ dec \h+ (\w+) $/ {
-                my $name = ~$0;
-                my $var = self.lookup($name);
-                take "    dec_i \@{$var.asm}";
-            }
-            when /^:s print <expression>$/ {
-            }
-            when /^:s next (\w+) if (\w+)$/ {
-                my $label = self.lookup(~$0);
-                my $var = self.lookup(~$1);
-                take "    if_i \@{$var.asm} \@{$label.asm}";
-            }
-            when /^ '.' (\w+) \h+ '{' $/ {
-                my $name = ~$0;
-                my $label = Label.new(:$name, :$*block);
-                %scope{$name} = $label;
-                self.BLOCK($label);
-            }
-            when /^ '}' $/ {
-                take ".{$label.asm(1)}:";
-                return True;
-            }
-            default { self.bailout }
-        }
-        die X::MoarTL::Syntax(:$!n, line => self.line, msg => 'unclosed block');
-    }
-}
+sub parse { ... }
 
 multi MAIN(Str $src) {
-    put Parser.parse($src.IO.slurp);
+    parse $src.IO;
     CATCH {
-        default {
-            put "#.error {.^name}";
-            note .message;
-        }
+        put "#.error {.^name}";
+        when X::MoarTL::Syntax { note .message }
+        default { note $_ }
+        exit 1;
     }
 }
 
 multi MAIN(*@src where $_ > 1) {
     for @src {
         put "#.file $_";
-        MAIN($_);
+        MAIN $_;
         print "\n";
     }
+}
+
+class Block { ... }
+class Var { ... }
+
+sub bailout($msg = '?') is hidden-from-backtrace {
+    die X::MoarTL::Syntax.new($msg);
+}
+
+sub next-line {
+    my $next := $lines.pull-one;
+    return $next if $next =:= IterationEnd;
+    ++$n;
+    $line = $next.trim;
+}
+
+sub lookup($name) {
+    for @scopes {
+        return .{$name}
+            if .{$name}:exists;
+    }
+
+    Nil;
+}
+
+sub block($name) { ... }
+
+sub parse($src --> Nil) {
+    my %*scope;
+
+    $n = 0;
+    $lines := $src.lines(:close).iterator();
+    @scopes := [ %*scope ];
+
+    while ($_ := next-line) !=:= IterationEnd { /^[
+        || [\#|$]
+        || (:s fn (\w+)${ put ".frame $0" })
+        || (:s fn (\w+)'()' '{'${
+            my $name = ~$0;
+            put ".frame $name";
+            $blocks = 0;
+            block $name;
+        })
+        || {bailout}
+    ]/ }
+}
+
+my token expression($made is rw) {
+    || ((\w+) <?{ lookup(~$0) ~~ Var }> ${ $made = lookup(~$0) })
+}
+
+sub block($name) {
+    my %*scope;
+    my $*block = Block.new(:$name, id => $blocks++);
+    %*scope{$name} = $*block;
+    @scopes.unshift(%*scope);
+    LEAVE @scopes.shift;
+
+    put ".{$*block.bra}:";
+
+    my $made;
+    while ($_ := next-line) !=:= IterationEnd { /^[
+        || [\#|$]
+        || (:s '.'(\w+) '{'${ block ~$0 })
+        || ('}' ${
+            put ".{$*block.ket}:";
+            return;
+        })
+        || (:s (int) (\w+) '=' (\d+)${
+            my ($type, $name, $value) = $/>>.Str;
+            my $var = Var.new(:$name, :$type, :$*block);
+            %*scope{$name} = $var;
+            put "   .const[{$type}] {$var.longname} $value";
+        })
+        || (:s next (\w+) if <expression($made)>${
+            put "    if_i {$made.eval} \@.{$*block.bra}";
+        })
+        || (:s (dec) <expression($made)>${
+            my $op = ~$0;
+            my $suffix = { int => 'i' }.{$made.type} // bailout $made.type;
+            put "    {$op}_{$suffix} {$made.eval}";
+        })
+        || {bailout}
+    ]/ }
+
+    bailout 'unclosed block';
+}
+
+class Block {
+    has $.name;
+    has $.id;
+    method type { 'block' }
+    method bra { "bra{$!id}_{$!name}" }
+    method ket { "ket{$!id}_{$!name}" }
+}
+
+class Var {
+    has $.name;
+    has $.type;
+    has $.block;
+    method longname { "var{$!block.id}_{$!name}" }
+    method eval { "\@{self.longname}" }
 }

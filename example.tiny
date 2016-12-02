@@ -1,7 +1,7 @@
 fn main() {
     int i = 5
     .loop {
-        print str(i)
+#        print str(i)
         dec i
         next loop if i
     }
