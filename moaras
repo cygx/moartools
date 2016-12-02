@@ -53,6 +53,10 @@ class MoarASM {
         MAST::Local.new(:$index);
     }
 
+    method lexical($index, $frames_out = 0) {
+        MAST::Lexical.new(:$index, :$frames_out);
+    }
+
     method node() {
         MAST::Node;
     }
@@ -63,6 +67,14 @@ class MoarASM {
 
         my $type := %types{$typename};
         self.local($frame.add_local($type));
+    }
+
+    method add_lexical($frame, $typename, $name) {
+        nqp::die("unknown type: $typename")
+            unless nqp::existskey(%types, $typename);
+
+        my $type := %types{$typename};
+        self.lexical($frame.add_lexical($type, $name));
     }
 
     method add_frame($cu, $name = '<anon>', $cuuid = ~$global_cuuid++) {
@@ -97,6 +109,7 @@ sub arg($_) {
     when /^ \% (\d+) $/ { asm.local(+~$0) }
     when /^ \& (\w+) $/ { %*frames{~$0} }
     when /^ \@ (\w+) $/ { %*aliases{~$0} }
+    when /^ \$ (\w+) $/ { %*lexicals{~$0} }
     default { die "syntax error: $_" }
 }
 
@@ -106,6 +119,7 @@ multi eval('.hll', *@args) {
 
 multi eval('.frame', *@args) {
     %*aliases = ();
+    %*lexicals = ();
     $*frame := @args
         ?? (%*frames{@args[0]}
         // (%*frames{@args[0]} := asm.add_frame($*cu, |@args)))
@@ -127,6 +141,11 @@ multi eval('.alias', *@args) {
 
 multi eval('.local', *@args) {
     asm.add_local($*frame, $_) for @args;
+}
+
+multi eval('.lexical', *@args) {
+    die "syntax error: expected 2 args" unless @args == 2;
+    %*lexicals{@args[1]} := asm.add_lexical($*frame, |@args);
 }
 
 multi eval('.flags', *@args) {
@@ -207,6 +226,7 @@ sub parse($src) {
     my $*frame;
     my %*frames;
     my %*aliases;
+    my %*lexicals;
     my $*flags := nqp::list();
     my $*result := asm.node;
 
