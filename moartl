@@ -101,22 +101,22 @@ sub block($name) {
 
     my $made;
     while ($_ := next-line) !=:= IterationEnd { /^[
-        || [\#|$]
-        || (:s '.'(\w+) '{'${ block ~$0 })
-        || ('}' ${
+        | [\#|$]
+        | (:s '.'(\w+) '{'${ block ~$0 })
+        | ('}' ${
             put ".{$*block.ket}:";
             return;
         })
-        || (:s (int) (\w+) '=' (\d+)${
+        | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
             my $var = Var.new(:$name, :$type, :$*block);
             %*scope{$name} = $var;
             put "   .const[{$type}] {$var.longname} $value";
         })
-        || (:s next (\w+) if <expression($made)>${
+        | (:s next (\w+) if <expression($made)>${
             put "    if_i {$made.eval} \@.{$*block.bra}";
         })
-        || (:s (dec) <expression($made)>${
+        | (:s (dec) <expression($made)>${
             my $op = ~$0;
             my $suffix = { int => 'i' }.{$made.type} // bailout $made.type;
             put "    {$op}_{$suffix} {$made.eval}";
