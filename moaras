@@ -212,6 +212,7 @@ multi eval($_, *@args) {
         %*aliases{@args[0]} := $local;
         my $op := do given $type {
             when 'str' { 'const_s' }
+            when 'int' { 'const_i64' }
             default { die "syntax error: $_" }
         }
         asm.push_op($*frame, $op, $local, arg(@args[1]));
