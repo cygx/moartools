@@ -49,6 +49,10 @@ class MoarASM {
         MAST::SVal.new(:$value);
     }
 
+    method label() {
+        MAST::Label.new;
+    }
+
     method local($index) {
         MAST::Local.new(:$index);
     }
@@ -83,6 +87,10 @@ class MoarASM {
         $frame;
     }
 
+    method push($frame, $node) {
+        nqp::push($frame.instructions(), $node);
+    }
+
     method push_op($frame, $op, *@args) {
         nqp::die("unknown op: $op")
             unless nqp::existskey(%MAST::Ops::codes, $op);
@@ -110,6 +118,12 @@ sub arg($_) {
     when /^ \& (\w+) $/ { %*frames{~$0} }
     when /^ \@ (\w+) $/ { %*aliases{~$0} }
     when /^ \$ (\w+) $/ { %*lexicals{~$0} }
+    when /^ '@.' (\w+) $/ {
+        my $name := ~$0;
+        %*labels{$name}:exists
+            ?? %*labels{$name}
+            !! (%*labels{$name} := asm.label());
+    }
     default { die "syntax error: $_" }
 }
 
@@ -120,6 +134,7 @@ multi eval('.hll', *@args) {
 multi eval('.frame', *@args) {
     %*aliases = ();
     %*lexicals = ();
+    %*labels = ();
     $*frame := @args
         ?? (%*frames{@args[0]}
         // (%*frames{@args[0]} := asm.add_frame($*cu, |@args)))
@@ -177,6 +192,13 @@ multi eval('.call', *@args) {
 }
 
 multi eval($_, *@args) {
+    when /^ '.' (\w+) ':' $/ {
+        my $name := ~$0;
+        asm.push($*frame, %*labels{$name}:exists
+            ?? %*labels{$name}
+            !! (%*labels{$name} := asm.label()));
+    }
+
     when /^ '.local[' (\w+) ']' $/ {
         my $type := ~$0;
         %*aliases{$_} := asm.add_local($*frame, $type)
@@ -226,6 +248,7 @@ sub parse($src) {
     my $*frame;
     my %*frames;
     my %*aliases;
+    my %*labels;
     my %*lexicals;
     my $*flags := nqp::list();
     my $*result := asm.node;
