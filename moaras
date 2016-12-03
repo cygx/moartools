@@ -220,7 +220,7 @@ sub trim(str $str) {
 sub parse($src) {
     CATCH { nqp::say($_); nqp::exit(1) }
 
-    $fh := nqp::open($src, 'r');
+    $fh := $src eq '-' ?? nqp::getstdin() !! nqp::open($src, 'r');
     $cu := MAST::CompUnit.new;
     $globid := 0;
     %frames := {};
