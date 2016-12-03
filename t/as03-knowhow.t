@@ -6,7 +6,7 @@ use nqp;
 plan 4;
 
 unlink 't/knowhow.moarvm';
-my $nqp = $*EXECUTABLE.flip.subst('6lrep', 'pqn').flip;
+my $nqp = %*ENV<NQP> || $*EXECUTABLE.flip.subst('6lrep', 'pqn').flip;
 is qqx{"$nqp" moaras -x t/knowhow.asm}, '', 'assemble';
 
 nqp::loadbytecode('t/knowhow.moarvm');
