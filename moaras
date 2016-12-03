@@ -51,8 +51,8 @@ my $frame;
 my @flags;
 my $result := MAST::Node;
 
-sub bailout($msg = '?') {
-    nqp::die("syntax error: $msg\n[$n] $line");
+sub bailout($msg = '?', :$type = 'syntax error') {
+    nqp::die("$type: $msg\n[$n] $line");
 }
 
 sub iv($value, :$size = 64) {
@@ -180,6 +180,9 @@ sub create_alias($name, $value) {
 sub parse_line() {
     $line ~~ /^[
     | [\#|$]
+    | (:s '.done'${ return })
+    | (:s '.abort'[<.ws>(.*)]?${ bailout(~$/[0] || '?', type => 'aborted') })
+    | (:s '.file'[<.ws>(.*)]?${})
     | (:s '.hll' (\w+)${ $cu.hll(~$/[0]) })
     | (:s '.frame' (\w+) (\S+)${ create_frame(~$/[0], ~$/[1]) })
     | (:s '.frame' (\w+)${ create_frame(~$/[0]) })
@@ -228,7 +231,7 @@ sub parse($src) {
     while nqp::chars($line := nqp::readlinefh($fh)) {
         $n := $n + 1;
         $line := trim($line);
-        parse_line();
+        last unless parse_line();
     }
 
     $cu;
