@@ -9,6 +9,8 @@ class Op {
     has $.suffix;
     method suffix { $!suffix ?? "_{$!suffix}" !! '' }
     method arity { +@!signature }
+    method pair { $.parsig => self }
+    method parsig { @!signature.join }
     method eval($op, *@args) {
         my $i = 0;
         "    {$op}{$.suffix}" ~ @*made.map: -> $arg {
@@ -26,13 +28,23 @@ sub op(*@signature, :$suffix) {
     Op.new(:@signature, :$suffix);
 }
 
-my @ops = <dec exit print return say>;
+my @ops = <dec exit print say>;
 my constant OPS = {
     dec => op(<I>, :suffix<i>),
     exit => op(<I>),
     print => op(<S>),
-    return => op(<I>, :suffix<i>),
     say => op(<S>),
+}
+
+my @multiops = <return>;
+my constant MULTIOPS = {
+    return => %(
+        op(<I>, :suffix<i>).pair,
+        op(<N>, :suffix<n>).pair,
+        op(<S>, :suffix<s>).pair,
+        op(<O>, :suffix<o>).pair,
+        op().pair,
+    )
 }
 
 my $lines;
@@ -97,6 +109,20 @@ sub lookup($name) {
     Nil;
 }
 
+sub find_multi($op, $argsig) {
+    my %multi := MULTIOPS{$op};
+    %multi{$argsig} // do {
+        my @candis = %multi.keys.grep: {
+            .lc eq $argsig.lc and [&&] .comb Zle $argsig.comb;
+        }
+
+        if @candis == 0 { bailout 'wrong operands' }
+        elsif @candis > 1 { bailout 'ambiguous operands' }
+
+        %multi{@candis[0]};
+    }
+}
+
 sub block($name) { ... }
 
 sub parse($src --> Nil) {
@@ -133,6 +159,20 @@ sub iv(Int() $i) { IVal.new(:$i) }
 sub sv(Str() $s) { SVal.new(:$s) }
 sub const($value) { Const.new(:$value) }
 sub cast($expr, $type) { Cast.new(:$expr, :$type) }
+
+sub sig($_) {
+    when 'int' { 'i' }
+    when 'str' { 's' }
+}
+
+sub extsig($_) {
+    when 'int' { 'i64' }
+    when 'str' { 's' }
+}
+
+sub argsig(*@args) {
+    @args>>.sig.join;
+}
 
 my token subexpression {
     | ((\w+) <?{ lookup(~$0) ~~ Var }> { push @*made, lookup(~$0) })
@@ -176,20 +216,14 @@ sub block($name) {
             put OPS{~$0}.eval(~$0, @*made);
             @*made = ();
         })
+        | (:s (@multiops) <expression>*%[<.ws>?','<.ws>?]${
+            put find_multi(~$0, argsig(@*made)).eval(~$0, @*made);
+            @*made = ();
+        })
         || {bailout}
     ]/ }
 
     bailout 'unclosed block';
-}
-
-sub suffix($_) {
-    when 'int' { 'i' }
-    when 'str' { 's' }
-}
-
-sub extsuffix($_) {
-    when 'int' { 'i64' }
-    when 'str' { 's' }
 }
 
 class Block {
@@ -207,6 +241,7 @@ role Alias {
     has $.init;
     has $!declared;
     method longname { ... }
+    method sig { uc sig $!type }
     method declare {
         $!declared = True;
         put "    .local[{$.type}] {$.longname}";
@@ -227,12 +262,13 @@ class Var does Alias {
 class Tmp does Alias {
     has $.id;
     submethod TWEAK { $!id = $!block.temps{$!type}++ }
-    method longname { "tmp{$!block.id}_{suffix $.type}{$!id}" }
+    method longname { "tmp{$!block.id}_{sig $.type}{$!id}" }
     method promote { self }
 }
 
 role Value {
     method type { ... }
+    method sig { sig self.type }
     method eval { ... }
     method promote { Tmp.new(:$.type, :$*block, init => const(self)) }
 }
@@ -262,15 +298,16 @@ class Noop {
 class Const {
     has $.value;
     method eval($target) {
-        "    const_{extsuffix $!value.type} {$target} {$!value.eval}";
+        "    const_{extsig $!value.type} {$target} {$!value.eval}";
     }
 }
 
 class Cast {
     has $.expr;
     has $.type;
+    method sig { uc sig $!type }
     method promote { Tmp.new(:$!type, :$*block, init => self) }
     method eval($target) {
-        "    coerce_{suffix $!expr.type}{suffix $!type} {$target} {$!expr.eval}";
+        "    coerce_{sig $!expr.type}{sig $!type} {$target} {$!expr.eval}";
     }
 }
