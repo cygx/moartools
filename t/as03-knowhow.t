@@ -3,10 +3,11 @@ use v6;
 use Test;
 use nqp;
 
-plan 3;
+plan 4;
 
 unlink 't/knowhow.moarvm';
-qqx{$*EXECUTABLE moaras -x t/knowhow.asm};
+my $nqp = $*EXECUTABLE.flip.subst('6lrep', 'pqn').flip;
+is qqx{"$nqp" moaras -x t/knowhow.asm}, '', 'assemble';
 
 nqp::loadbytecode('t/knowhow.moarvm');
 my &create := nqp::hllize(nqp::gethllsym('asm', 'create_knowhow_type'));
