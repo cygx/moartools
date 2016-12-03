@@ -26,11 +26,12 @@ sub op(*@signature, :$suffix) {
     Op.new(:@signature, :$suffix);
 }
 
-my @ops = <dec exit print say>;
+my @ops = <dec exit print return say>;
 my constant OPS = {
     dec => op(<I>, :suffix<i>),
     exit => op(<I>),
     print => op(<S>),
+    return => op(<I>, :suffix<i>),
     say => op(<S>),
 }
 
@@ -111,6 +112,13 @@ sub parse($src --> Nil) {
     while ($_ := next-line) !=:= IterationEnd { /^[
         || [\#|$]
         || (:s fn (\w+)${ put ".frame $0" })
+        || (:s ld (\w+)'()' '{'${
+            my $name = ~$0;
+            put ".frame $name";
+            put ".set load";
+            $blocks = 0;
+            block $name;
+        })
         || (:s fn (\w+)'()' '{'${
             my $name = ~$0;
             put ".frame $name";
