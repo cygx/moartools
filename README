@@ -7,8 +7,8 @@ moaras - assembler targetting MoarVM bytecode
   Usage:
     moaras <src> <dest>
     moaras -x [<src> ...]
-    moaras --dump <src>
-    moaras --run <src> [<args> ...]
+    moaras --dump [<src>]
+    moaras --run [<src>] [<args> ...]
 
 moartl - compiler for a tiny language targetting MoarAS
   Usage:

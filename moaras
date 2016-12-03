@@ -252,16 +252,16 @@ sub usage() {
     nqp::say("Usage:
   $*exe <src> <dest>
   $*exe -x [<src> ...]
-  $*exe --dump <src>
-  $*exe --run <src> [<args> ...]");
+  $*exe --dump [<src>]
+  $*exe --run [<src>] [<args> ...]");
     nqp::exit(1);
 }
 
-sub dump_file($_, $src) {
+sub dump_file($_, $src = '-') {
     nqp::print(parse($src).dump());
 }
 
-sub run_file($_, $src, *@args) {
+sub run_file($_, $src = '-', *@args) {
     my &main := mainline(eval(parse($src)));
     main(|@args);
 }
