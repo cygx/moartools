@@ -1,0 +1,4 @@
+fn main() {
+    say 'hello world'
+    exit 0
+}
