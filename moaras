@@ -220,14 +220,28 @@ sub trim(str $str) {
         !! nqp::substr($str, $left, $pos + 1 - $left);
 }
 
-sub parse($src) {
-    CATCH { nqp::say($_); nqp::exit(1) }
-
-    $fh := $src eq '-' ?? nqp::getstdin() !! nqp::open($src, 'r');
+sub reset() {
     $cu := MAST::CompUnit.new;
     $globid := 0;
     %frames := {};
+}
 
+sub parse_code($code) {
+    reset();
+
+    for nqp::split("\n", $code) {
+        $n := $n + 1;
+        $line := trim($_);
+        last unless parse_line();
+    }
+
+    $cu;
+}
+
+sub parse_file($src) {
+    reset();
+
+    $fh := $src eq '-' ?? nqp::getstdin() !! nqp::open($src, 'r');
     while nqp::chars($line := nqp::readlinefh($fh)) {
         $n := $n + 1;
         $line := trim($line);
@@ -238,17 +252,19 @@ sub parse($src) {
 }
 
 sub eval($cu) {
-    CATCH { nqp::say($_); nqp::exit(1) }
     $assembler.assemble_and_load($cu);
 }
 
 sub compile($cu, $dest) {
-    CATCH { nqp::say($_); nqp::exit(1) }
     $assembler.assemble_to_file($cu, $dest);
 }
 
 sub mainline($bc) {
     nqp::compunitmainline($bc);
+}
+
+sub eval_code($code) {
+    mainline(eval(parse_code($code)));
 }
 
 sub usage() {
@@ -261,16 +277,16 @@ sub usage() {
 }
 
 sub dump_file($_, $src = '-') {
-    nqp::print(parse($src).dump());
+    nqp::print(parse_file($src).dump());
 }
 
 sub run_file($_, $src = '-', *@args) {
-    my &main := mainline(eval(parse($src)));
+    my &main := mainline(eval(parse_file($src)));
     main(|@args);
 }
 
 sub compile_file($src, $dest) {
-    compile(parse($src), $dest);
+    compile(parse_file($src), $dest);
 }
 
 sub compile_all($_, *@files) {
@@ -279,6 +295,8 @@ sub compile_all($_, *@files) {
 }
 
 sub MAIN($*exe, *@args) {
+    CATCH { nqp::say($_); nqp::exit(1) }
+
     if !@args { usage() }
     elsif @args[0] eq '-x' { compile_all(|@args) }
     elsif @args[0] eq '--dump' { dump_file(|@args) }
@@ -286,3 +304,5 @@ sub MAIN($*exe, *@args) {
     elsif @args == 2 { compile_file(|@args) }
     else { usage() }
 }
+
+nqp::bindcurhllsym('moaras::eval', &eval_code);

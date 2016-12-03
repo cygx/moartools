@@ -64,7 +64,7 @@ class X::MoarTL::Syntax is Exception {
 
 sub parse { ... }
 
-proto MAIN(|) {
+multi MAIN(*@src where ?*) {
     CATCH {
         put ".abort {.^name}";
         when X::MoarTL::Syntax { note .message }
@@ -72,13 +72,25 @@ proto MAIN(|) {
         exit 1;
     }
 
-    {*}
-
+    .&parse for @src;
     put '.done';
 }
 
-multi MAIN(Str $src) { parse $src }
-multi MAIN(*@src where $_ > 1) { .&parse for @src }
+multi MAIN(Str $script, Bool :$run!, *@args) {
+    my @out;
+    {
+        temp $*OUT = class { method print($_) { @out.push($_) } }
+        parse($script);
+    }
+
+    use nqp;
+    my $fh := nqp::open($?FILE.subst(/moartl$/, 'moaras'), 'r');
+    my $code := nqp::readallfh($fh);
+    nqp::closefh($fh);
+    nqp::loadbytecode('nqp.moarvm');
+    nqp::getcomp('nqp').eval($code, :encoding<utf8>);
+    nqp::gethllsym('nqp', 'moaras::eval')(@out.join)(|@args);
+}
 
 class Block { ... }
 class Var { ... }
