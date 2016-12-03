@@ -47,24 +47,23 @@ class X::MoarTL::Syntax is Exception {
     method message { "syntax error: $!msg\n[$!n] $!line" }
 }
 
-CATCH {
-    put ".abort {.^name}";
-    when X::MoarTL::Syntax { note .message }
-    default { note $_ }
-    exit 1;
-}
-
 sub parse { ... }
 
-multi MAIN(Str $src) {
-    parse $src;
+proto MAIN(|) {
+    CATCH {
+        put ".abort {.^name}";
+        when X::MoarTL::Syntax { note .message }
+        default { note $_ }
+        exit 1;
+    }
+
+    {*}
+
     put '.done';
 }
 
-multi MAIN(*@src where $_ > 1) {
-    .&parse for @src;
-    put '.done';
-}
+multi MAIN(Str $src) { parse $src }
+multi MAIN(*@src where $_ > 1) { .&parse for @src }
 
 class Block { ... }
 class Var { ... }
