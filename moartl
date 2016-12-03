@@ -4,6 +4,8 @@
 
 use v6;
 
+my @types = <int num str obj>;
+
 class Op {
     has @.signature;
     has $.suffix;
@@ -15,10 +17,9 @@ class Op {
         my $i = 0;
         "    {$op}{$.suffix}" ~ @*made.map: -> $arg {
             ' ' ~ do given @!signature[$i++] {
-                when 'i' { $arg.eval }
-                when 's' { $arg.eval }
-                when 'I' { $arg.promote.eval }
-                when 'S' { $arg.promote.eval }
+                when any <i s o> { $arg.eval }
+                when any <I S O> { $arg.promote.eval }
+                default { die "panic: unexpected parameter sig '$_'" }
             }
         }
     }
@@ -28,12 +29,14 @@ sub op(*@signature, :$suffix) {
     Op.new(:@signature, :$suffix);
 }
 
-my @ops = <dec exit print say>;
+my @ops = <close dec exit open print say>;
 my constant OPS = {
-    dec => op(<I>, :suffix<i>),
-    exit => op(<I>),
-    print => op(<S>),
-    say => op(<S>),
+    close   => op(<O>, :suffix<fh>),
+    dec     => op(<I>, :suffix<i>),
+    exit    => op(<I>),
+    open    => op(<O S S>, :suffix<fh>),
+    print   => op(<S>),
+    say     => op(<S>),
 }
 
 my @multiops = <return>;
@@ -167,10 +170,10 @@ my token expression {
     | <&subexpression>
 }
 
-sub block($name) {
+sub block($blockname) {
     my %*scope;
-    my $*block = Block.new(:$name, id => $blocks++);
-    %*scope{$name} = $*block;
+    my $*block = Block.new(name => $blockname, id => $blocks++);
+    %*scope{$blockname} = $*block;
     @scopes.unshift(%*scope);
     LEAVE @scopes.shift;
 
@@ -184,6 +187,12 @@ sub block($name) {
             put ".{$*block.ket}:";
             return;
         })
+        | (:s (@types) (\w+)${
+            my ($type, $name) = ~<<$/;
+            my $init = Noop;
+            my $var = Var.new(:$name, :$type, :$*block, :$init);
+            (%*scope{$name} = $var).declare;
+        })
         | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
             my $init = const(iv($value));
@@ -196,6 +205,32 @@ sub block($name) {
         })
         | (:s (@ops) <expression>**{OPS{$0}.arity}%[<.ws>?','<.ws>?]${
             put OPS{~$0}.eval(~$0, @*made);
+            @*made = ();
+        })
+        | (:s (@types) (\w+) '=' (@ops)<?{OPS{$2}.arity-1 == 0}>${
+            my ($type, $name, $op) = ~<<$/;
+            my $init = Noop;
+            my $var = Var.new(:$name, :$type, :$*block, :$init);
+            (%*scope{$name} = $var).declare;
+            @*made = $var;
+            put OPS{$op}.eval($op, @*made);
+            @*made = ();
+        })
+        | (:s (@types) (\w+) '=' (@ops)
+                <expression>**{OPS{$2}.arity-1}%[<.ws>?','<.ws>?]${
+            my ($type, $name, $op) = ~<<$/[^3];
+            my $init = Noop;
+            my $var = Var.new(:$name, :$type, :$*block, :$init);
+            (%*scope{$name} = $var).declare;
+            unshift @*made, $var;
+            put OPS{$op}.eval($op, @*made);
+            @*made = ();
+        })
+        | (:s (\w+) '=' <?{ lookup(~$0) ~~ Var }>(@ops)
+                <expression>**{OPS{$1}.arity-1}%[<.ws>?','<.ws>?]${
+            my ($varname, $op) = ~<<$/;
+            @*made.unshift(lookup($varname));
+            put OPS{$op}.eval($op, @*made);
             @*made = ();
         })
         | (:s (@multiops) <expression>*%[<.ws>?','<.ws>?]${
@@ -227,7 +262,7 @@ role Alias {
     method declare {
         $!declared = True;
         put "    .local[{$.type}] {$.longname}";
-        put $!init.eval("\@{$.longname}");
+        .put with $!init.eval("\@{$.longname}");
     }
     method eval {
         self.declare unless $!declared;
@@ -274,7 +309,7 @@ class SVal does Value {
 }
 
 class Noop {
-    method eval {}
+    method eval($target) {}
 }
 
 class Const {
@@ -341,6 +376,6 @@ multi MAIN(Str $script, Bool :$run!, *@args) {
 }
 
 multi MAIN(Str $src, Str $dest = $src.subst(/'.tiny'?$/, '.moarvm'),
-        Bool :$compile!, *@args) {
+        Bool :$compile!) {
     compile_asm(capture-out({ parse $src }), $dest);
 }

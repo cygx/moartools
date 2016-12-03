@@ -1,0 +1,5 @@
+fn main() {
+    obj fh = open 'README', 'r'
+    close fh
+    return 0
+}
