@@ -1,5 +1,6 @@
 PROVE = prove -eperl6
-RM    = rm -f
+RM_F  = rm -f
+RM_RF = rm -rf
 
 test:
 	$(PROVE) t
@@ -8,4 +9,7 @@ verbose:
 	$(PROVE) -v t
 
 clean:
-	$(RM) t/*.tmp t/*.moarvm
+	$(RM_F) t/*.tmp t/*.moarvm
+
+realclean: clean
+	$(RM_RF) .precomp

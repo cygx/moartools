@@ -2,9 +2,12 @@
 use v6;
 use Test;
 
+use lib '.';
+use t::run;
+
 plan my \N = 1;
-my $nqp = %*ENV<NQP> || $*EXECUTABLE.flip.subst('6lrep', 'pqn').flip;
+
 for ^N {
     my $n = N.fmt('%02i');
-    is qqx{"$nqp" moaras --run t/lexicals$n.asm}, 'ok', "lexicals $n";
+    is ~run-nqp(<moaras --run>, "t/lexicals$n.asm"), 'ok', "lexicals $n";
 }
