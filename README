@@ -14,3 +14,4 @@ moartl - compiler for a tiny language targetting MoarAS
   Usage:
     moartl [<src> ...]
     moartl --run <script> [<args> ...]
+    moartl --compile <src> [<dest>]

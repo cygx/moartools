@@ -62,36 +62,6 @@ class X::MoarTL::Syntax is Exception {
     method message { "syntax error: $!msg\n[$!n] $!line" }
 }
 
-sub parse { ... }
-
-multi MAIN(*@src where ?*) {
-    CATCH {
-        put ".abort {.^name}";
-        when X::MoarTL::Syntax { note .message }
-        default { note $_ }
-        exit 1;
-    }
-
-    .&parse for @src;
-    put '.done';
-}
-
-multi MAIN(Str $script, Bool :$run!, *@args) {
-    my @out;
-    {
-        temp $*OUT = class { method print($_) { @out.push($_) } }
-        parse($script);
-    }
-
-    use nqp;
-    my $fh := nqp::open($?FILE.subst(/moartl$/, 'moaras'), 'r');
-    my $code := nqp::readallfh($fh);
-    nqp::closefh($fh);
-    nqp::loadbytecode('nqp.moarvm');
-    nqp::getcomp('nqp').eval($code, :encoding<utf8>);
-    nqp::gethllsym('nqp', 'moaras::eval')(@out.join)(|@args);
-}
-
 class Block { ... }
 class Var { ... }
 class Tmp { ... }
@@ -322,4 +292,55 @@ class Cast {
     method eval($target) {
         "    coerce_{sig $!expr.type}{sig $!type} {$target} {$!expr.eval}";
     }
+}
+
+sub capture-out(&block) {
+    my @out;
+    temp $*OUT = class { method print($_) { @out.push($_) } }
+    block;
+    @out.join;
+}
+
+sub load_moaras {
+    use nqp;
+    once {
+        my $fh := nqp::open($?FILE.subst(/moartl$/, 'moaras'), 'r');
+        my $code := nqp::readallfh($fh);
+        nqp::closefh($fh);
+        nqp::loadbytecode('nqp.moarvm');
+        nqp::getcomp('nqp').eval($code, :encoding<utf8>);
+    }
+}
+
+sub eval_asm($asm) {
+    use nqp;
+    load_moaras;
+    nqp::gethllsym('nqp', 'moaras::eval')($asm);
+}
+
+sub compile_asm($asm, $dest) {
+    use nqp;
+    load_moaras;
+    nqp::gethllsym('nqp', 'moaras::compile')($asm, $dest);
+}
+
+multi MAIN(*@src where ?*) {
+    CATCH {
+        put ".abort {.^name}";
+        when X::MoarTL::Syntax { note .message }
+        default { note $_ }
+        exit 1;
+    }
+
+    .&parse for @src;
+    put '.done';
+}
+
+multi MAIN(Str $script, Bool :$run!, *@args) {
+    eval_asm(capture-out({ parse $script }))(|@args);
+}
+
+multi MAIN(Str $src, Str $dest = $src.subst(/'.tiny'?$/, '.moarvm'),
+        Bool :$compile!, *@args) {
+    compile_asm(capture-out({ parse $src }), $dest);
 }

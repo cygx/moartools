@@ -285,6 +285,10 @@ sub run_file($_, $src = '-', *@args) {
     main(|@args);
 }
 
+sub compile_code($code, $dest) {
+    compile(parse_code($code), $dest);
+}
+
 sub compile_file($src, $dest) {
     compile(parse_file($src), $dest);
 }
@@ -306,3 +310,4 @@ sub MAIN($*exe, *@args) {
 }
 
 nqp::bindcurhllsym('moaras::eval', &eval_code);
+nqp::bindcurhllsym('moaras::compile', &compile_code);
