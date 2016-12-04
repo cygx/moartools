@@ -12,6 +12,6 @@ moaras - assembler targetting MoarVM bytecode
 
 moartl - compiler for a tiny language targetting MoarAS
   Usage:
-    moartl [<src> ...]
-    moartl --run <script> [<args> ...]
-    moartl --compile <src> [<dest>]
+    moartl0 [<src> ...]
+    moartl0 --run <script> [<args> ...]
+    moartl0 --compile <src> [<dest>]

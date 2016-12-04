@@ -9,7 +9,7 @@ plan 2;
 
 my $tmpfile = 't/tl01.tmp';
 
-my $asm = ~run-perl6 <moartl t/hello.tiny>;
+my $asm = ~run-perl6 <moartl0 t/hello.tiny>;
 like $asm, /^^ ".done\n" $/, 'compiled';
 
 unlink $tmpfile;

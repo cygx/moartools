@@ -6,4 +6,4 @@ use lib '.';
 use t::run;
 
 plan 1;
-is ~run-perl6(<moartl --run t/loop.tiny>), '54321', 'ran loop';
+is ~run-perl6(<moartl0 --run t/loop.tiny>), '54321', 'ran loop';

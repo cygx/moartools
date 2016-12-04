@@ -12,4 +12,4 @@ clean:
 	$(RM_F) t/*.tmp t/*.moarvm
 
 realclean: clean
-	$(RM_RF) .precomp
+	$(RM_RF) .precomp *.moarvm
