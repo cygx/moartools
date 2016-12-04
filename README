@@ -3,6 +3,7 @@ MoarAS and MoarTL
 Copyright 2016 cygx <cygx@cpan.org>
 Distributed under the Boost Software License, Version 1.0
 
+
 moaras - assembler targetting MoarVM bytecode
   Usage:
     moaras <src> <dest>
@@ -10,8 +11,12 @@ moaras - assembler targetting MoarVM bytecode
     moaras --dump [<src>]
     moaras --run [<src>] [<args> ...]
 
-moartl - compiler for a tiny language targetting MoarAS
+moartl0 - compiler for a tiny language targetting MoarAS
   Usage:
     moartl0 [<src> ...]
     moartl0 --run <script> [<args> ...]
     moartl0 --compile <src> [<dest>]
+
+
+Eample Usage:
+    ./moartl0 --compile t/hello.tiny && moar t/hello.moarvm
