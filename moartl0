@@ -4,8 +4,6 @@
 
 use v6;
 
-my @types = <int num str obj>;
-
 class Op {
     has @.signature;
     has $.suffix;
@@ -29,17 +27,17 @@ sub op(*@signature, :$suffix) {
     Op.new(:@signature, :$suffix);
 }
 
-my @ops = <close dec exit open print say>;
 my constant OPS = {
-    close   => op(<O>, :suffix<fh>),
-    dec     => op(<I>, :suffix<i>),
-    exit    => op(<I>),
-    open    => op(<O S S>, :suffix<fh>),
-    print   => op(<S>),
-    say     => op(<S>),
+    chars       => op(<I S>),
+    close       => op(<O>, :suffix<fh>),
+    dec         => op(<I>, :suffix<i>),
+    exit        => op(<I>),
+    open        => op(<O S S>, :suffix<fh>),
+    print       => op(<S>),
+    readline    => op(<S O>, :suffix<fh>),
+    say         => op(<S>),
 }
 
-my @multiops = <return>;
 my constant MULTIOPS = {
     return => %(
         op(<I>, :suffix<i>).pair,
@@ -49,6 +47,10 @@ my constant MULTIOPS = {
         op().pair,
     )
 }
+
+my @types = <int num str obj>;
+my @ops = OPS.keys;
+my @multiops = MULTIOPS.keys;
 
 my $lines;
 my $line;
@@ -170,6 +172,10 @@ my token expression {
     | <&subexpression>
 }
 
+sub is-label($name) {
+    lookup($name) ~~ Block || bailout "unknown label '$name'";
+}
+
 sub block($blockname) {
     my %*scope;
     my $*block = Block.new(name => $blockname, id => $blocks++);
@@ -199,8 +205,15 @@ sub block($blockname) {
             my $var = Var.new(:$name, :$type, :$*block, :$init);
             (%*scope{$name} = $var).declare;
         })
-        | (:s next (\w+) if <expression>${
-            put "    if_i {@*made[0].eval} \@.{$*block.bra}";
+        | (:s next (\w+)$ {is-label ~$0}{
+            put "    goto \@.{lookup(~$0).bra}";
+        })
+        | (:s next (\w+) {is-label ~$0} if <expression>${
+            put "    if_i {@*made[0].eval} \@.{lookup(~$0).bra}";
+            @*made = ();
+        })
+        | (:s break (\w+) {is-label ~$0} unless <expression>${
+            put "    unless_i {@*made[0].eval} \@.{lookup(~$0).ket}";
             @*made = ();
         })
         | (:s (@ops) <expression>**{OPS{$0}.arity}%[<.ws>?','<.ws>?]${
@@ -330,8 +343,13 @@ class Cast {
 }
 
 sub capture-out(&block) {
+    my $stdout = $*OUT;
     my @out;
-    temp $*OUT = class { method print($_) { @out.push($_) } }
+
+    temp $*OUT = %*ENV<MOARTL_ECHO> === '1'
+        ?? class { method print($_) { @out.push($_) } }
+        !! class { method print($_) { $stdout.print($_); @out.push($_) } }
+
     block;
     @out.join;
 }
@@ -359,7 +377,7 @@ sub compile_asm($asm, $dest) {
     nqp::gethllsym('nqp', 'moaras::compile')($asm, $dest);
 }
 
-multi MAIN(*@src where ?*) {
+proto MAIN(|) {
     CATCH {
         put ".abort {.^name}";
         when X::MoarTL::Syntax { note .message }
@@ -367,6 +385,10 @@ multi MAIN(*@src where ?*) {
         exit 1;
     }
 
+    {*}
+}
+
+multi MAIN(*@src where ?*) {
     .&parse for @src;
     put '.done';
 }

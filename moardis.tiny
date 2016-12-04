@@ -1,9 +1,12 @@
 fn main() {
     obj fh = open 'README', 'r'
-    close fh
     .loop {
-        str line
-        line = readline fh
+        str line = readline fh
+        int n = chars line
+        break loop unless n
+        print line
+        next loop
     }
+    close fh
     return 0
 }

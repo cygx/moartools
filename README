@@ -20,3 +20,4 @@ moartl0 - compiler for a tiny language targetting MoarAS
 
 Eample Usage:
     ./moartl0 --compile t/hello.tiny && moar t/hello.moarvm
+    MOARTL_ECHO=1 ./moartl0 --run t/loop.tiny
