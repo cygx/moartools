@@ -4,30 +4,13 @@
 
 use v6;
 
-class Op {
-    has @.signature;
-    has $.suffix;
-    method suffix { $!suffix ?? "_{$!suffix}" !! '' }
-    method arity { +@!signature }
-    method pair { $.parsig => self }
-    method parsig { @!signature.join }
-    method eval($op, *@args) {
-        my $i = 0;
-        "    {$op}{$.suffix}" ~ @*made.map: -> $arg {
-            ' ' ~ do given @!signature[$i++] {
-                when any <i s o> { $arg.eval }
-                when any <I S O> { $arg.promote.eval }
-                default { die "panic: unexpected parameter sig '$_'" }
-            }
-        }
-    }
-}
+class Op { ... }
 
 sub op(*@signature, :$suffix) {
     Op.new(:@signature, :$suffix);
 }
 
-my constant OPS = {
+my \OPS = {
     chars       => op(<I S>),
     close       => op(<O>, :suffix<fh>),
     dec         => op(<I>, :suffix<i>),
@@ -38,7 +21,7 @@ my constant OPS = {
     say         => op(<S>),
 }
 
-my constant MULTIOPS = {
+my \MULTIOPS = {
     return => %(
         op(<I>, :suffix<i>).pair,
         op(<N>, :suffix<n>).pair,
@@ -59,12 +42,29 @@ my $n;
 my @scopes;
 my $blocks;
 
-class X::MoarTL::Syntax is Exception {
+class MoarTLException is Exception {
     has $.msg;
     has $.n;
     has $.line;
     method new($msg) { self.bless(:$msg, :$n, :$line) }
-    method message { "syntax error: $!msg\n[$!n] $!line" }
+    method message { "{$.type}: $!msg\n[$!n] $!line" }
+    method type { !!! }
+}
+
+class X::MoarTL::Panic is MoarTLException { method type { 'panic' } }
+class X::MoarTL::Syntax is MoarTLException { method type { 'syntax error' } }
+class X::MoarTL::Lexical is MoarTLException { method type { 'lexical error' } }
+
+multi bailout($msg = '?') is hidden-from-backtrace {
+    die X::MoarTL::Panic.new($msg);
+}
+
+multi bailout($msg = '?', :$syn!) is hidden-from-backtrace {
+    die X::MoarTL::Syntax.new($msg);
+}
+
+multi bailout($msg = '?', :$lex!) is hidden-from-backtrace {
+    die X::MoarTL::Lexical.new($msg);
 }
 
 class Block { ... }
@@ -75,10 +75,6 @@ class SVal { ... }
 class Noop { ... }
 class Const { ... }
 class Cast { ... }
-
-sub bailout($msg = '?') is hidden-from-backtrace {
-    die X::MoarTL::Syntax.new($msg);
-}
 
 sub next-line {
     my $next := $lines.pull-one;
@@ -173,7 +169,7 @@ my token expression {
 }
 
 sub is-label($name) {
-    lookup($name) ~~ Block || bailout "unknown label '$name'";
+    lookup($name) ~~ Block || bailout :lex, "unknown label '$name'";
 }
 
 sub block($blockname) {
@@ -254,6 +250,25 @@ sub block($blockname) {
     ]/ }
 
     bailout 'unclosed block';
+}
+
+class Op {
+    has @.signature;
+    has $.suffix;
+    method suffix { $!suffix ?? "_{$!suffix}" !! '' }
+    method arity { +@!signature }
+    method pair { $.parsig => self }
+    method parsig { @!signature.join }
+    method eval($op, *@args) {
+        my $i = 0;
+        "    {$op}{$.suffix}" ~ @*made.map: -> $arg {
+            ' ' ~ do given @!signature[$i++] {
+                when any <i s o> { $arg.eval }
+                when any <I S O> { $arg.promote.eval }
+                default { die "panic: unexpected parameter sig '$_'" }
+            }
+        }
+    }
 }
 
 class Block {
@@ -380,7 +395,7 @@ sub compile_asm($asm, $dest) {
 proto MAIN(|) {
     CATCH {
         put ".abort {.^name}";
-        when X::MoarTL::Syntax { note .message }
+        when MoarTLException { note .message }
         default { note $_ }
         exit 1;
     }
