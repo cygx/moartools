@@ -1,5 +1,9 @@
 fn main() {
     obj fh = open 'README', 'r'
     close fh
+    .loop {
+        str line
+        line = readline fh
+    }
     return 0
 }
