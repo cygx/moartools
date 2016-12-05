@@ -361,9 +361,9 @@ sub capture-out(&block) {
     my $stdout = $*OUT;
     my @out;
 
-    temp $*OUT = %*ENV<MOARTL_ECHO> === '1'
-        ?? class { method print($_) { @out.push($_) } }
-        !! class { method print($_) { $stdout.print($_); @out.push($_) } }
+    temp $*OUT = %*ENV<MOARTL_ECHO>.defined &&  %*ENV<MOARTL_ECHO> eq '1'
+        ?? class { method print($_) { $stdout.print($_); @out.push($_) } }
+        !! class { method print($_) { @out.push($_) } }
 
     block;
     @out.join;
@@ -409,7 +409,16 @@ multi MAIN(*@src where ?*) {
 }
 
 multi MAIN(Str $script, Bool :$run!, *@args) {
-    eval_asm(capture-out({ parse $script }))(|@args);
+    my $asm := capture-out({ parse $script });
+    try {
+        eval_asm($asm)(|@args);
+        CATCH {
+            default {
+                note $_;
+                exit 1;
+            }
+        }
+    }
 }
 
 multi MAIN(Str $src, Str $dest = $src.subst(/'.tiny'?$/, '.moarvm'),
