@@ -6,11 +6,12 @@ use v6;
 
 class Op { ... }
 
-sub op(*@signature, :$suffix) {
-    Op.new(:@signature, :$suffix);
+sub op(*@signature, :$suffix, :$dummy) {
+    Op.new(:@signature, :$suffix, :$dummy);
 }
 
 my \OPS = {
+    bindcurhllsym   => op(<O S O>),
     boothash        => op(<O>),
     bootintarray    => op(<O>),
     chars           => op(<I S>),
@@ -18,8 +19,13 @@ my \OPS = {
     close           => op(<O>, :suffix<fh>),
     create          => op(<O O>),
     composetype     => op(<O O O>),
+    ctx             => op(<O>),
     dec             => op(<I>, :suffix<i>),
     exit            => op(<I>),
+    forceouterctx   => op(<O O>),
+    getcode         => op(<O &>),
+    getcurhllsym    => op(<O S>),
+    getlexrel       => op(<O O S>),
     newtype         => op(<O O S>),
     open            => op(<O S S>, :suffix<fh>),
     print           => op(<S>),
@@ -46,6 +52,16 @@ my \MULTIOPS = {
         op(<O S N>, :suffix<n>).pair,
         op(<O S S>, :suffix<s>).pair,
         op(<O S O>, :suffix<o>).pair,
+    ),
+    getlex => %(
+        op(<I s>, :suffix<ni>).pair,
+        op(<N s>, :suffix<nn>).pair,
+        op(<S s>, :suffix<ns>).pair,
+        op(<O s>, :suffix<no>).pair,
+    ),
+    loadbytecode => %(
+        op(<S S>).pair,
+        op(<S>, :dummy(+0 => 0)).pair,
     ),
     read => %(
         op(<O O I>, :suffix<fhb>).pair,
@@ -108,6 +124,7 @@ multi bailout($msg = '?', :$lex!) is hidden-from-backtrace {
 }
 
 class Block { ... }
+class Coderef { ... }
 class Var { ... }
 class Tmp { ... }
 class IVal { ... }
@@ -154,26 +171,32 @@ sub parse($src --> Nil) {
     put ".hll tiny";
 
     my %*scope;
+    @scopes = $(%*scope);
 
     $n = 0;
     $lines := $src.IO.lines(:close).iterator();
-    @scopes := [ %*scope ];
 
     while ($_ := next-line) !=:= IterationEnd { /^[
-        || [\#|$]
-        || (:s fn (\w+)${ put ".frame $0" })
-        || (:s ld (\w+)'()' '{'${
+        | [\#|$]
+        | (:s fn (\w+)${
             my $name = ~$0;
+            %*scope{$name} //= Coderef.new(:$name);
+            put ".frame $name";
+        })
+        | (:s ld (\w+)'()' '{'${
+            my $name = ~$0;
+            %*scope{$name} //= Coderef.new(:$name);
             put ".frame $name";
             put ".set load";
             $blocks = 0;
             block $name;
         })
-        || (:s fn (\w+)'()' '{'${
+        | (:s fn (\w+)'()' '{'${
             my $name = ~$0;
+            %*scope{$name} //= Coderef.new(:$name);
             put ".frame $name";
             $blocks = 0;
-            block $name;
+            block "__$name";
         })
         || {bailout}
     ]/ }
@@ -210,7 +233,7 @@ sub argsig(*@args) {
 }
 
 my token subexpression {
-    | ((\w+) <?{ lookup(~$0) ~~ Var }> { push @*made, lookup(~$0) })
+    | ((\w+) <?{ lookup(~$0) ~~ Var|Coderef }> { push @*made, lookup(~$0) })
     | ((\d+) { push @*made, iv(~$0) })
     | ("'" (<-[']>*) "'" { push @*made, sv(~$0) })
 }
@@ -333,6 +356,12 @@ sub block($blockname) {
             put find_multi(~$0, argsig(@*made)).eval(~$0, @*made);
             @*made = ();
         })
+        | (:s lex (\w+) '=' <expression>${
+            my $arg = @*made[0];
+            put "    .lexical {$arg.type} {$0}";
+            put "    bindlex \${$0} {$arg.promote.eval}";
+            @*made = ();
+        })
         || {bailout}
     ]/ }
 
@@ -342,14 +371,21 @@ sub block($blockname) {
 class Op {
     has @.signature;
     has $.suffix;
+    has $.dummy;
     method suffix { $!suffix ?? "_{$!suffix}" !! '' }
     method arity { +@!signature }
     method pair { $.parsig => self }
     method parsig { @!signature.join }
     method eval($op, *@args) {
+        # FIXME: promote first, copy dummy second
+        my @sigs = @!signature;
+        if $!dummy {
+            @args.splice($!dummy.key, 0, @args[$!dummy.value]);
+            @sigs.splice($!dummy.key, 0, @sigs[$!dummy.value]);
+        }
         "    {$op}{$.suffix}" ~ join '', @args.kv.map: -> $i, $arg {
-            ' ' ~ do given @!signature[$i] {
-                when any <i s o> { $arg.eval }
+            ' ' ~ do given @sigs[$i] {
+                when any <i s o &> { $arg.eval }
                 when any <I S O> { $arg.promote.eval }
                 default { die "panic: unexpected parameter sig '$_'" }
             }
@@ -364,6 +400,12 @@ class Block {
     method type { 'block' }
     method bra { "bra{$!id}_{$!name}" }
     method ket { "ket{$!id}_{$!name}" }
+}
+
+class Coderef {
+    has $.name;
+    method type { 'coderef' }
+    method eval { "\&{$!name}" }
 }
 
 role Alias {
