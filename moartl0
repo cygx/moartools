@@ -11,24 +11,46 @@ sub op(*@signature, :$suffix) {
 }
 
 my \OPS = {
-    chars       => op(<I S>),
-    close       => op(<O>, :suffix<fh>),
-    dec         => op(<I>, :suffix<i>),
-    exit        => op(<I>),
-    open        => op(<O S S>, :suffix<fh>),
-    print       => op(<S>),
-    readline    => op(<S O>, :suffix<fh>),
-    say         => op(<S>),
+    boothash        => op(<O>),
+    bootintarray    => op(<O>),
+    chars           => op(<I S>),
+    close           => op(<O>, :suffix<fh>),
+    create          => op(<O O>),
+    composetype     => op(<O O O>),
+    dec             => op(<I>, :suffix<i>),
+    exit            => op(<I>),
+    newtype         => op(<O O S>),
+    open            => op(<O S S>, :suffix<fh>),
+    print           => op(<S>),
+    readline        => op(<S O>, :suffix<fh>),
+    reprname        => op(<S O>),
+    say             => op(<S>),
 }
 
 my \MULTIOPS = {
+    bindkey => %(
+        op(<O S I>, :suffix<i>).pair,
+        op(<O S N>, :suffix<n>).pair,
+        op(<O S S>, :suffix<s>).pair,
+        op(<O S O>, :suffix<o>).pair,
+    ),
+    read => %(
+        op(<O O I>, :suffix<fhb>).pair,
+        op(<S O I>, :suffix<fhs>).pair,
+    ),
     return => %(
         op(<I>, :suffix<i>).pair,
         op(<N>, :suffix<n>).pair,
         op(<S>, :suffix<s>).pair,
         op(<O>, :suffix<o>).pair,
         op().pair,
-    )
+    ),
+    set => %(
+        op(<I I>).pair,
+        op(<N N>).pair,
+        op(<S S>).pair,
+        op(<O O>).pair,
+    ),
 }
 
 my @types = <int num str obj>;
@@ -145,12 +167,16 @@ sub cast($expr, $type) { Cast.new(:$expr, :$type) }
 
 sub sig($_) {
     when 'int' { 'i' }
+    when 'num' { 'n' }
     when 'str' { 's' }
+    when 'obj' { 'o' }
+    default { bailout "no sig for type $_" }
 }
 
 sub extsig($_) {
     when 'int' { 'i64' }
     when 'str' { 's' }
+    default { bailout "no extended sig for type $_" }
 }
 
 sub argsig(*@args) {
@@ -166,6 +192,7 @@ my token subexpression {
 my token expression {
     | ((str) '(' <&subexpression> ')' { push @*made, cast(@*made.pop, ~$0) })
     | <&subexpression>
+    || { bailout 'failed to parse arguments' }
 }
 
 sub is-label($name) {
@@ -185,6 +212,13 @@ sub block($blockname) {
     while ($_ := next-line) !=:= IterationEnd { /^[
         | [\#|$]
         | (:s '.'(\w+) '{'${ block ~$0 })
+        | (:s do '{'${ block "do{$*block.temps<do>++}" })
+        | (:s done <expression>${
+            bailout 'done outside do block' unless $*dovar;
+            put find_multi('set', argsig($*dovar, @*made[0]))
+                .eval('set', $*dovar, @*made[0]);
+            @*made = ();
+        })
         | ('}' ${
             put ".{$*block.ket}:";
             return;
@@ -194,6 +228,14 @@ sub block($blockname) {
             my $init = Noop;
             my $var = Var.new(:$name, :$type, :$*block, :$init);
             (%*scope{$name} = $var).declare;
+        })
+        | (:s (@types) (\w+) '=' do '{'${
+            my ($type, $name) = ~<<$/;
+            my $init = Noop;
+            my $var = Var.new(:$name, :$type, :$*block, :$init);
+            (%*scope{$name} = $var).declare;
+            my $*dovar = $var;
+            block "do{$*block.temps<do>++}"
         })
         | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
@@ -260,9 +302,8 @@ class Op {
     method pair { $.parsig => self }
     method parsig { @!signature.join }
     method eval($op, *@args) {
-        my $i = 0;
-        "    {$op}{$.suffix}" ~ @*made.map: -> $arg {
-            ' ' ~ do given @!signature[$i++] {
+        "    {$op}{$.suffix}" ~ join '', @args.kv.map: -> $i, $arg {
+            ' ' ~ do given @!signature[$i] {
                 when any <i s o> { $arg.eval }
                 when any <I S O> { $arg.promote.eval }
                 default { die "panic: unexpected parameter sig '$_'" }

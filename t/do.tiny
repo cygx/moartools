@@ -1,0 +1,7 @@
+fn main() {
+    str ok = do {
+        done 'ok'
+    }
+    print ok
+    return 0
+}
