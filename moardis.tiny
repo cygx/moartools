@@ -1,12 +1,30 @@
 fn main() {
-    obj fh = open 'README', 'r'
-    .loop {
-        str line = readline fh
-        int n = chars line
-        break loop unless n
-        print line
-        next loop
+    obj null
+    obj bh = boothash
+
+    obj byte_type = newtype null, 'P6int'
+    do {
+        obj info = create bh
+        obj integer_info = create bh
+        obj bits = obj(8)
+        bindkey info, 'integer', integer_info
+        bindkey integer_info, 'bits', bits
+        composetype byte_type, byte_type, info
     }
+
+    obj buf_type = newtype null, 'VMArray'
+    do {
+        obj info = create bh
+        obj array_info = create bh
+        bindkey info, 'array', array_info
+        bindkey array_info, 'type', byte_type
+        composetype buf_type, buf_type, info
+    }
+
+    obj fh = open 'hello.moarvm', 'r'
+    obj buf = create buf_type
+    read fh, buf, 8
     close fh
+
     return 0
 }

@@ -28,6 +28,12 @@ my \OPS = {
 }
 
 my \MULTIOPS = {
+    atkey => %(
+        op(<I O S>, :suffix<i>).pair,
+        op(<N O S>, :suffix<n>).pair,
+        op(<S O S>, :suffix<s>).pair,
+        op(<O O S>, :suffix<o>).pair,
+    ),
     bindkey => %(
         op(<O S I>, :suffix<i>).pair,
         op(<O S N>, :suffix<n>).pair,
