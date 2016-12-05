@@ -1,21 +1,32 @@
-MoarAS and MoarTL
+MoarTools, an alternative compiler toolchain for MoarVM
 
 Copyright 2016 cygx <cygx@cpan.org>
 Distributed under the Boost Software License, Version 1.0
 
 
-moaras - assembler targetting MoarVM bytecode
+Comes with MoarTL, a tiny bootstrapped programming language like NQP,
+but specific to MoarVM, less perlish and even more low-level.
+
+NOTE:   All of this is work in progress. Currently, only a few bits and
+        pieces have been implemented, and nothing has been finalized yet.
+
+
+moaras - assembler targetting MoarVM bytecode, written in NQP
   Usage:
     moaras <src> <dest>
     moaras -x [<src> ...]
     moaras --dump [<src>]
     moaras --run [<src>] [<args> ...]
 
-moartl0 - compiler for a tiny language targetting MoarAS
+moardis - disassembler for MoarVM bytecode, written in MoarTL [TODO]
+
+moartl0 - stage 0 compiler for MoarTL, written in Perl 6
   Usage:
     moartl0 [<src> ...]
     moartl0 --run <script> [<args> ...]
     moartl0 --compile <src> [<dest>]
+
+moartl - compiler for MoarTL, written in MoarTL [TODO]
 
 
 Eample Usage:
