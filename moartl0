@@ -14,6 +14,7 @@ my \OPS = {
     boothash        => op(<O>),
     bootintarray    => op(<O>),
     chars           => op(<I S>),
+    chr             => op(<S I>),
     close           => op(<O>, :suffix<fh>),
     create          => op(<O O>),
     composetype     => op(<O O O>),
@@ -33,6 +34,12 @@ my \MULTIOPS = {
         op(<N O S>, :suffix<n>).pair,
         op(<S O S>, :suffix<s>).pair,
         op(<O O S>, :suffix<o>).pair,
+    ),
+    atpos => %(
+        op(<I O I>, :suffix<i>).pair,
+        op(<N O I>, :suffix<n>).pair,
+        op(<S O I>, :suffix<s>).pair,
+        op(<O O I>, :suffix<o>).pair,
     ),
     bindkey => %(
         op(<O S I>, :suffix<i>).pair,
@@ -278,6 +285,9 @@ sub block($blockname) {
             put OPS{~$0}.eval(~$0, @*made);
             @*made = ();
         })
+        | (:s (@types) (\w+) '=' (@multiops)[' '|$]{
+            bailout 'cannot initialize multi-ops for now';
+        })
         | (:s (@types) (\w+) '=' (@ops)<?{OPS{$2}.arity-1 == 0}>${
             my ($type, $name, $op) = ~<<$/;
             my $init = Noop;
@@ -312,6 +322,12 @@ sub block($blockname) {
             @*made.unshift(lookup($varname));
             put OPS{$op}.eval($op, @*made);
             @*made = ();
+        })
+        | (:s (\w+) '=' <?{ lookup(~$0) ~~ Var }>(@multiops)[' '|$]{
+            bailout 'cannot assign multi-ops for now';
+        })
+        | (:s (\w+) ':=' <expression>${
+            bailout "TODO $?LINE"
         })
         | (:s (@multiops) <expression>*%[<.ws>?','<.ws>?]${
             put find_multi(~$0, argsig(@*made)).eval(~$0, @*made);
