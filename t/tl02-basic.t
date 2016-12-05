@@ -7,7 +7,8 @@ use t::run;
 
 my @scripts =
     't/loop.tiny' => '54321',
-    't/do.tiny' => 'ok';
+    't/do.tiny' => 'ok',
+    't/box.tiny' => '42';
 
 plan +@scripts;
 is ~run-perl6('moartl0', '--run', .key), .value, .key

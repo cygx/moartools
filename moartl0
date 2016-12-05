@@ -51,6 +51,11 @@ my \MULTIOPS = {
         op(<S S>).pair,
         op(<O O>).pair,
     ),
+    unbox => %(
+        op(<I O>, :suffix<i>).pair,
+        op(<N O>, :suffix<n>).pair,
+        op(<S O>, :suffix<s>).pair,
+    ),
 }
 
 my @types = <int num str obj>;
@@ -97,6 +102,7 @@ class SVal { ... }
 class Noop { ... }
 class Const { ... }
 class Cast { ... }
+class IBox { ... }
 
 sub next-line {
     my $next := $lines.pull-one;
@@ -165,6 +171,13 @@ sub sv(Str() $s) { SVal.new(:$s) }
 sub const($value) { Const.new(:$value) }
 sub cast($expr, $type) { Cast.new(:$expr, :$type) }
 
+sub box($expr) {
+    given $expr.type {
+        when 'int' { IBox.new(:$expr) }
+        default { bailout 'cannot box that' }
+    }
+}
+
 sub sig($_) {
     when 'int' { 'i' }
     when 'num' { 'n' }
@@ -191,6 +204,7 @@ my token subexpression {
 
 my token expression {
     | ((str) '(' <&subexpression> ')' { push @*made, cast(@*made.pop, ~$0) })
+    | ((obj) '(' <&subexpression> ')' { push @*made, box(@*made.pop) })
     | <&subexpression>
     || { bailout 'failed to parse arguments' }
 }
@@ -277,6 +291,15 @@ sub block($blockname) {
             put OPS{$op}.eval($op, @*made);
             @*made = ();
         })
+        | (:s (@types) (\w+) '=' <expression>${
+            my $type = ~$0;
+            my $name = ~$1;
+            my $arg = @*made.pop;
+            bailout 'type mismatch' unless $arg.type eq $type;
+            my $init = $arg.init;
+            my $var = Var.new(:$name, :$type, :$*block, :$init);
+            (%*scope{$name} = $var).declare;
+        })
         | (:s (\w+) '=' <?{ lookup(~$0) ~~ Var }>(@ops)
                 <expression>**{OPS{$1}.arity-1}%[<.ws>?','<.ws>?]${
             my ($varname, $op) = ~<<$/;
@@ -357,6 +380,7 @@ role Value {
     method sig { sig self.type }
     method eval { ... }
     method promote { Tmp.new(:$.type, :$*block, init => const(self)) }
+    method init { const(self) }
 }
 
 class IVal does Value {
@@ -393,8 +417,21 @@ class Cast {
     has $.type;
     method sig { uc sig $!type }
     method promote { Tmp.new(:$!type, :$*block, init => self) }
+    method init { self }
     method eval($target) {
         "    coerce_{sig $!expr.type}{sig $!type} {$target} {$!expr.eval}";
+    }
+}
+
+class IBox {
+    has $.expr;
+    method type { 'obj' }
+    method sig { 'O' }
+    method promote { Tmp.new(:type<obj>, :$*block, init => self) }
+    method init { self }
+    method eval($target) {
+        "    bootint {$target}\n" ~
+        "    box_i {$target} {$!expr.promote.eval} {$target}";
     }
 }
 
