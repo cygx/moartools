@@ -528,8 +528,8 @@ class Lex {
     has $.index;
     method ref($outer = 0) {
         $outer
-            ?? Lexref.new(lex => self)
-            !! Outerref.new(lex => self, :$outer);
+            ?? Outerref.new(lex => self, :$outer)
+            !! Lexref.new(lex => self);
     }
 }
 
