@@ -80,6 +80,8 @@ grammar MoarAS::Grammar {
 
     proto token refexpr {*}
           token refexpr:sym<lexical> { '*' <name> }
+          token refexpr:sym<farlex>  { '*' (\d+) '!' (\d+) }
+          token refexpr:sym<rawlex>  { '*' (\d+) }
           token refexpr:sym<label>   { '@' <name> }
           token refexpr:sym<code>    { '&' (\S+) }
 
@@ -125,6 +127,8 @@ class MoarAS::Actions {
     method constexpr:sym<int>($/) { make MAST::IVal.new(value => +~$/) }
     method constexpr:sym<num>($/) { make MAST::NVal.new(value => +~$/) }
     method refexpr:sym<lexical>($/) { make theframe().lexical($<name>.made) }
+    method refexpr:sym<rawlex>($/) { make theframe().rawlex(+~$/[0]) }
+    method refexpr:sym<farlex>($/) { make theframe().rawlex(+~$/[0], +~$/[1]) }
     method refexpr:sym<label>($/) { make theframe().label($<name>.made) }
     method refexpr:sym<code>($/) { make frame(~$/[0]).node }
     method expr:<var>($/) { make $<varexpr>.made }
@@ -261,6 +265,10 @@ class MoarAS::Frame {
             unless nqp::existskey(%!lexicals, $name);
 
         %!lexicals{$name};
+    }
+
+    method rawlex($index, $frames_out = 0) {
+        MAST::Lexical.new(:$index, :$frames_out);
     }
 
     method local($name) {

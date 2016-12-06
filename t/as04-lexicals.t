@@ -5,9 +5,9 @@ use Test;
 use lib '.';
 use t::run;
 
-plan my \N = 1;
+plan my \N = 3;
 
-for ^N {
-    my $n = N.fmt('%02i');
+for 1..N {
+    my $n = .fmt('%02i');
     is ~run6(<moaras --run>, "t/lexicals$n.asm"), 'ok', "lexicals $n";
 }
