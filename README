@@ -13,22 +13,26 @@ NOTE:   All of this is work in progress. Currently, only a few bits and
 
 moaras - assembler targetting MoarVM bytecode, written in NQP
   Usage:
-    moaras <src> <dest>
-    moaras -x [<src> ...]
-    moaras --dump [<src>]
-    moaras --run [<src>] [<args> ...]
+    moaras --parse <src>
+    moaras --compile <src> [<dest>]
+    moaras --dump <src>
+    moaras --run <src> [<args> ...]
+    moaras --parse-stdin
+    moaras --compile-stdin <dest>
+    moaras --dump-stdin
+    moaras --run-stdin [<args> ...]
 
 moardis - disassembler for MoarVM bytecode, written in MoarTL [TODO]
 
 moartl0 - stage 0 compiler for MoarTL, written in Perl 6
   Usage:
-    moartl0 [<src> ...]
-    moartl0 --run <script> [<args> ...]
+    moartl0 --parse <src>
     moartl0 --compile <src> [<dest>]
+    moartl0 --dump <src>
+    moartl0 --run <src> [<args> ...]
+    moartl0 --parse-stdin
+    moartl0 --compile-stdin <dest>
+    moartl0 --dump-stdin
+    moartl0 --run-stdin [<args> ...]
 
 moartl - compiler for MoarTL, written in MoarTL [TODO]
-
-
-Eample Usage:
-    ./moartl0 --compile t/hello.tiny && moar t/hello.moarvm
-    MOARTL_ECHO=1 ./moartl0 --run t/loop.tiny
