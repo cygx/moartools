@@ -1,10 +1,9 @@
 .hll asm
 
 .frame main
-    .local int
-    .lexical int i
-    .const[str] ok 'ok'
-    .alias rv %0
-    getlex @rv $i
-    print @ok
-    exit @rv
+    .locals int str
+    .local str OK 'ok'
+    .lexical str ok $OK
+    getlex %1 *ok
+    print %1
+    exit %0

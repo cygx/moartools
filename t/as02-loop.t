@@ -6,4 +6,4 @@ use lib '.';
 use t::run;
 
 plan 1;
-is ~run-nqp(<moaras --run t/loop.asm>), '54321', 'loop';
+is ~run6(<moaras --run t/loop.asm>), '54321', 'loop';

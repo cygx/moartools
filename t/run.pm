@@ -16,7 +16,7 @@ sub spawn($cmd, @args, $cwd, $env) {
     nqp::readallfh($out);
 }
 
-sub run-perl6(*@args, :$cwd, :$env) is export {
+sub run6(*@args, :$cwd, :$env) is export {
     my $perl6 = %*ENV<PERL6> || ~$*EXECUTABLE;
     spawn($perl6, @args, $cwd, $env);
 }

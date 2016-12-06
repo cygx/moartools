@@ -9,5 +9,5 @@ plan my \N = 1;
 
 for ^N {
     my $n = N.fmt('%02i');
-    is ~run-nqp(<moaras --run>, "t/lexicals$n.asm"), 'ok', "lexicals $n";
+    is ~run6(<moaras --run>, "t/lexicals$n.asm"), 'ok', "lexicals $n";
 }

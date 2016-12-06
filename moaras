@@ -1,313 +1,43 @@
-#!/usr/bin/env nqp
+#!/usr/bin/env perl6
 # Copyright 2016 cygx <cygx@cpan.org>
 # Distributed under the Boost Software License, Version 1.0
 
-my $assembler := nqp::getcomp('MAST');
+use v6;
+use nqp;
+use MoarAS:from<NQP>;
 
-my @types := <int num str obj>;
-my %types := nqp::hash(
-    'int', int,
-    'num', num,
-    'str', str,
-    'obj', NQPMu
-);
+my \as = MoarAS::Compiler;
+sub dest($_) { .subst(/'.asm'?$/, '.moarvm') }
+sub trace { %*ENV<MOAR_TRACE>.defined &&  %*ENV<MOAR_TRACE> eq '1' }
 
-my %suffix := nqp::hash(
-    'int', 'i',
-    'str', 's'
-);
-
-my %ext_suffix := nqp::hash(
-    'int', 'i64',
-    'str', 's'
-);
-
-my %flagmap := nqp::hash(
-    'obj', 1,
-    'int', 2,
-    'num', 4,
-    'str', 8,
-    ':obj', 1 +| 32,
-    ':int', 2 +| 32,
-    ':num', 4 +| 32,
-    ':str', 8 +| 32,
-    #'flat', 64,
-    #'flatnamed', 128,
-);
-
-my $fh;
-my str $line;
-my int $n;
-
-my $cu;
-my int $globid;
-my %frames;
-
-my %aliases;
-my %lexicals;
-my %labels;
-my $frame;
-
-my @flags;
-my $result := MAST::Node;
-
-sub bailout($msg = '?', :$type = 'syntax error') {
-    nqp::die("$type: $msg\n[$n] $line");
-}
-
-sub iv($value, :$size = 64) {
-    MAST::IVal.new(:$value, :$size, signed => 1);
-}
-
-sub uv($value, :$size = 64) {
-    MAST::IVal.new(:$value, :$size, signed => 0);
-}
-
-sub nv($value, :$size = 64) {
-    MAST::NVal.new(:$value, :$size);
-}
-
-sub sv($value) {
-    MAST::SVal.new(:$value);
-}
-
-sub create_frame($name = '<anon>', $cuuid = '') {
-    %aliases := {};
-    %lexicals := {};
-    %labels := {};
-
-    if $name eq '<anon>' {
-        $cuuid := ~$globid++;
-        $frame := MAST::Frame.new(:$name, :$cuuid);
+proto MAIN(|) {
+    CATCH {
+        note trace() ?? $_ !! ~$_;
+        exit 1;
     }
-    elsif !nqp::existskey(%frames, $name) {
-        $cuuid := ~$globid++ unless $cuuid;
-        $frame := MAST::Frame.new(:$name, :$cuuid);
-        %frames{$name} := $frame;
-    }
-    else { $frame := %frames{$name} }
-
-    $cu.add_frame($frame);
+    {*}
 }
 
-sub create_lexical($type, $name) {
-    %lexicals{$name} := MAST::Lexical.new(
-        index => $frame.add_lexical(%types{$type}, $name));
-}
+multi MAIN(Str $src, Bool :$parse!) {
+    as.parse_file($src) }
 
-sub mark_frame($mark) {
-    if $mark eq 'main' { $cu.main_frame($frame) }
-    elsif $mark eq 'load' { $cu.load_frame($frame) }
-}
+multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) { 
+    as.compile_file($src, $dest) }
 
-sub expression($_) {
-    if $_ ~~ /^ (\d+) $/ -> $/ { uv(+~$/[0]) }
-    elsif $_ ~~ /^ (<[+-]> \d+) $/ -> $/ { iv(+~$/[0]) }
-    elsif $_ ~~ /^ \' (.*?) \' $/ -> $/ { sv(~$/[0]) }
-    elsif $_ ~~ /^ (\w+) \: $/ -> $/ { sv(~$/[0]) }
-    elsif $_ ~~ /^ \% (\d+) $/ -> $/ { MAST::Local.new(index => +~$/[0]) }
-    elsif $_ ~~ /^ \& (\w+) $/ -> $/ { %frames{~$/[0]} }
-    elsif $_ ~~ /^ \@ (\w+) $/ -> $/ { %aliases{~$/[0]} }
-    elsif $_ ~~ /^ \$ (\w+) $/ -> $/ { %lexicals{~$/[0]} }
-    elsif $_ ~~ /^ '@.' (\w+) $/ -> $/ {
-        my str $name := ~$/[0];
-        nqp::existskey(%labels, $name)
-            ?? %labels{$name}
-            !! (%labels{$name} := MAST::Label.new());
-    }
-    else { bailout($_) }
-}
+multi MAIN(Str $src, Bool :$dump!) {
+    put as.parse_file($src).dump }
 
-sub eval_args(@_) {
-    my @args;
-    nqp::setelems(@args, nqp::elems(@_));
+multi MAIN(Str $src, *@args, Bool :$run!) {
+    as.eval_file($src, |@args) }
 
-    my int $i := 0;
-    my int $len := nqp::elems(@_);
-    while $i < $len {
-        @args[$i] := nqp::istype(@_[i], MAST::Node)
-            ?? @_[$i]
-            !! expression(~@_[$i]);
+multi MAIN(Bool :$parse-stdin!) {
+    as.parse_fh(nqp::getstdin()) }
 
-        $i := $i + 1;
-    }
+multi MAIN(Str $dest, Bool :$compile-stdin!) {
+    as.compile_fh(nqp::getstdin(), $dest) }
 
-    @args;
-}
+multi MAIN(Bool :$dump-stdin!) {
+    put as.parse_fh(nqp::getstdin()).dump }
 
-sub push_op($op, @args) {
-    nqp::die("unknown op: $op")
-        unless nqp::existskey(%MAST::Ops::codes, $op);
-
-    nqp::push($frame.instructions(), MAST::Op.new(:$op, |eval_args(@args)));
-}
-
-sub create_const($type, $name, $arg) {
-    my $local := MAST::Local.new(index => $frame.add_local(%types{$type}));
-    %aliases{$name} := $local;
-    push_op("const_{%ext_suffix{$type}}", [$local, expression($arg)]);
-}
-
-sub push_call($target, @args) {
-    nqp::push($frame.instructions(),
-        MAST::Call.new(:$target, :@flags, :$result, |eval_args(@args)));
-
-    @flags := [];
-    $result := MAST::Node;
-}
-
-sub create_aliased_local($type, $name) {
-    %aliases{$name} :=
-        MAST::Local.new(index => $frame.add_local(%types{$type}));
-}
-
-sub create_label($name) {
-    nqp::push($frame.instructions(), nqp::existskey(%labels, $name)
-        ?? %labels{$name}
-        !! (%labels{$name} := MAST::Label.new()));
-}
-
-sub create_aliased_param($type, $name, $index) {
-    my $local := MAST::Local.new(index => $frame.add_local(%types{$type}));
-    %aliases{$name} := $local;
-    push_op("param_rp_{%suffix{$type}}", [$local, expression($index)]);
-}
-
-sub create_alias($name, $value) {
-    %aliases{$name} := expression($value);
-}
-
-sub parse_line() {
-    $line ~~ /^[
-    | [\#|$]
-    | (:s '.done'${ return })
-    | (:s '.abort'[<.ws>(.*)]?${ bailout(~$/[0] || '?', type => 'aborted') })
-    | (:s '.file'[<.ws>(.*)]?${})
-    | (:s '.hll' (\w+)${ $cu.hll(~$/[0]) })
-    | (:s '.frame' (\w+) (\S+)${ create_frame(~$/[0], ~$/[1]) })
-    | (:s '.frame' (\w+)${ create_frame(~$/[0]) })
-    | (:s '.frame'${ create_frame() })
-    | (:s '.set' (main|load)+%<.ws>${ mark_frame(~$_) for $/[0] })
-    | (:s '.alias' (\w+) (\S+|\'.*?\')${ create_alias(~$/[0], ~$/[1]) })
-    | (:s '.param['(@types)']' (\S+) (\d+)${
-        create_aliased_param(~$/[0], ~$/[1], ~$/[2]) })
-    | (:s '.local' (@types)+%<.ws>${ $frame.add_local(%types{~$_}) for $/[0] })
-    | (:s '.local['(@types)']' (\w+)+%<.ws>${
-        create_aliased_local(~$/[0], ~$_) for $/[1] })
-    | (:s '.lexical' (@types) (\w+)${ create_lexical(~$/[0], ~$/[1]) })
-    | (:s '.const['(@types)']' (\w+) (\S+|\'.*?\')${
-        create_const(~$/[0], ~$/[1], ~$/[2]) })
-    | (:s '.flags' (\S+)+%<.ws>${ nqp::push(@flags, %flagmap{~$_}) for $/[0] })
-    | (:s '.result' (\S+)${ $result := expression(~$/[0]) })
-    | (:s '.call' (\S+|\'.*?\') (\S+|\'.*?\')*%<.ws>${
-        push_call(expression($/[0]), $/[1]) })
-    | (:s '.'(\w+)':'${ create_label(~$/[0]) })
-    | (:s (\w+) (\S+|\'.*?\')*%<.ws>${ push_op(~$/[0], $/[1]) })
-    || {bailout()}
-    ]/;
-}
-
-sub trim(str $str) {
-    my int $pos  := nqp::chars($str) - 1;
-    my int $left := nqp::findnotcclass(
-        nqp::const::CCLASS_WHITESPACE, $str, 0, $pos + 1);
-
-    $pos := $pos - 1 while nqp::isge_i($pos, $left)
-           && nqp::iscclass(nqp::const::CCLASS_WHITESPACE, $str, $pos);
-
-    nqp::islt_i($pos, $left)
-        ?? ''
-        !! nqp::substr($str, $left, $pos + 1 - $left);
-}
-
-sub reset() {
-    $cu := MAST::CompUnit.new;
-    $globid := 0;
-    %frames := {};
-}
-
-sub parse_code($code) {
-    reset();
-
-    for nqp::split("\n", $code) {
-        $n := $n + 1;
-        $line := trim($_);
-        last unless parse_line();
-    }
-
-    $cu;
-}
-
-sub parse_file($src) {
-    reset();
-
-    $fh := $src eq '-' ?? nqp::getstdin() !! nqp::open($src, 'r');
-    while nqp::chars($line := nqp::readlinefh($fh)) {
-        $n := $n + 1;
-        $line := trim($line);
-        last unless parse_line();
-    }
-
-    $cu;
-}
-
-sub eval($cu) {
-    $assembler.assemble_and_load($cu);
-}
-
-sub compile($cu, $dest) {
-    $assembler.assemble_to_file($cu, $dest);
-}
-
-sub mainline($bc) {
-    nqp::compunitmainline($bc);
-}
-
-sub eval_code($code) {
-    mainline(eval(parse_code($code)));
-}
-
-sub usage() {
-    nqp::say("Usage:
-  $*exe <src> <dest>
-  $*exe -x [<src> ...]
-  $*exe --dump [<src>]
-  $*exe --run [<src>] [<args> ...]");
-    nqp::exit(1);
-}
-
-sub dump_file($_, $src = '-') {
-    nqp::print(parse_file($src).dump());
-}
-
-sub run_file($_, $src = '-', *@args) {
-    my &main := mainline(eval(parse_file($src)));
-    main(|@args);
-}
-
-sub compile_code($code, $dest) {
-    compile(parse_code($code), $dest);
-}
-
-sub compile_file($src, $dest) {
-    compile(parse_file($src), $dest);
-}
-
-sub compile_all($_, *@files) {
-    compile_file($_, subst($_, /'.asm'?$/, '.moarvm'))
-        for @files;
-}
-
-sub MAIN($*exe, *@args) {
-    CATCH { nqp::say($_); nqp::exit(1) }
-
-    if !@args { usage() }
-    elsif @args[0] eq '-x' { compile_all(|@args) }
-    elsif @args[0] eq '--dump' { dump_file(|@args) }
-    elsif @args[0] eq '--run' { run_file(|@args) }
-    elsif @args == 2 { compile_file(|@args) }
-    else { usage() }
-}
-
-nqp::bindcurhllsym('moaras::eval', &eval_code);
-nqp::bindcurhllsym('moaras::compile', &compile_code);
+multi MAIN(*@args, Bool :$run-stdin!) {
+    as.eval_fh(nqp::getstdin(), |@args) }
