@@ -11,6 +11,7 @@ sub op(*@signature, :$suffix, :$dummy) {
 
 my \OPS = {
     bindcurhllsym   => op(<O S O>),
+    bindlex         => op(<* O>),
     boothash        => op(<O>),
     bootintarray    => op(<O>),
     chars           => op(<I S>),
@@ -95,7 +96,10 @@ my $line;
 my $n;
 
 my @scopes;
+my %lexpads;
+my %lexchain;
 my $blocks;
+my $frame;
 
 class MoarTLException is Exception {
     has $.msg;
@@ -124,13 +128,16 @@ multi bailout($msg = '?', :$lex!) is hidden-from-backtrace {
 
 class Block { ... }
 class Coderef { ... }
+class Lexref { ... }
 class Var { ... }
 class Tmp { ... }
+class Lex { ... }
 class IVal { ... }
 class SVal { ... }
 class Noop { ... }
 class Const { ... }
 class Cast { ... }
+class Delex { ... }
 class IBox { ... }
 
 sub next-line {
@@ -149,6 +156,20 @@ sub lookup($name) {
     Nil;
 }
 
+sub lexlookup($name) {
+    my $current = $frame;
+    my $i = 0;
+    loop {
+        if defined my $pad = %lexpads{$current} {
+            my $lex = $pad{$name};
+            return $lex.ref($i) if defined $lex;
+        }
+
+        ++$i;
+        $current = %lexchain{$current} // last;
+    }
+}
+
 sub find_multi($op, $argsig) {
     my %multi := MULTIOPS{$op};
     %multi{$argsig} // do {
@@ -164,6 +185,7 @@ sub find_multi($op, $argsig) {
 }
 
 sub block($name) { ... }
+sub lexpad($name) { ... }
 
 sub parse($src --> Nil) {
     put ".hll tiny";
@@ -181,12 +203,30 @@ sub parse($src --> Nil) {
             %*scope{$name} //= Coderef.new(:$name);
             put ".frame $name";
         })
+        | (:s lex (\w+) '{'${
+            my $name := ~$0;
+            %*scope{$name} //= Coderef.new(:$name);
+            put ".frame $name";
+            lexpad $name;
+        })
+        | (:s lex (\w+) ':' (\w+)${
+            my $child := ~$0;
+            my $parent := ~$1;
+            bailout "lexical environment for '$child' already exists"
+                if %lexchain{$child}:exists;
+
+            bailout "unknown lexical environment '$parent'"
+                unless %lexpads{$parent}:exists;
+
+            %lexchain{$child} = $parent;
+        })
         | (:s ld (\w+)'()' '{'${
             my $name = ~$0;
             %*scope{$name} //= Coderef.new(:$name);
             put ".frame $name";
             put ".set load";
             $blocks = 0;
+            $frame = $name;
             block $name;
         })
         | (:s fn (\w+)'()' '{'${
@@ -194,6 +234,7 @@ sub parse($src --> Nil) {
             %*scope{$name} //= Coderef.new(:$name);
             put ".frame $name";
             $blocks = 0;
+            $frame = $name;
             block "__$name";
         })
         || {bailout}
@@ -207,10 +248,17 @@ sub sv(Str() $s) { SVal.new(:$s) }
 sub const($value) { Const.new(:$value) }
 sub cast($expr, $type) { Cast.new(:$expr, :$type) }
 
-sub box($expr) {
+sub objectify($expr) {
     given $expr.type {
         when 'int' { IBox.new(:$expr) }
-        default { bailout 'cannot box that' }
+        when 'lexref' {
+            my $type = $expr.lex.type;
+            bailout "lexref has type '$type'"
+                unless $type eq 'obj';
+
+            Delex.new(ref => $expr);
+        }
+        default { bailout "cannot objectify '$_'" }
     }
 }
 
@@ -234,19 +282,41 @@ sub argsig(*@args) {
 
 my token subexpression {
     | ((\w+) <?{ lookup(~$0) ~~ Var|Coderef }> { push @*made, lookup(~$0) })
+    | ((\w+) <?{ lexlookup(~$0) ~~ Lexref }> { push @*made, lexlookup(~$0) })
     | ((\d+) { push @*made, iv(~$0) })
     | ("'" (<-[']>*) "'" { push @*made, sv(~$0) })
 }
 
 my token expression {
     | ((str) '(' <&subexpression> ')' { push @*made, cast(@*made.pop, ~$0) })
-    | ((obj) '(' <&subexpression> ')' { push @*made, box(@*made.pop) })
+    | ((obj) '(' <&subexpression> ')' { push @*made, objectify(@*made.pop) })
     | <&subexpression>
     || { bailout 'failed to parse arguments' }
 }
 
 sub is-label($name) {
     lookup($name) ~~ Block || bailout :lex, "unknown label '$name'";
+}
+
+sub lexpad($framename) {
+    my %pad := %lexpads{$framename} //= {};
+
+    while ($_ := next-line) !=:= IterationEnd { /^[
+        | [\#|$]
+        | (:s (@types) (\w+)${
+            my $type = ~$0;
+            my $name = ~$1;
+            bailout "lexical '$name' already declared"
+                if %pad{$name}:exists;
+
+            %pad{$name} = Lex.new(:$name, :$type, index => +%pad);
+            put "    .lexical $type $name";
+        })
+        | ('}' ${ return })
+        || {bailout}
+    ]/ }
+
+    bailout 'unclosed block';
 }
 
 sub block($blockname) {
@@ -285,7 +355,7 @@ sub block($blockname) {
             my $var = Var.new(:$name, :$type, :$*block, :$init);
             (%*scope{$name} = $var).declare;
             my $*dovar = $var;
-            block "do{$*block.temps<do>++}"
+            block "do{$*block.temps<do>++}";
         })
         | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
@@ -357,6 +427,7 @@ sub block($blockname) {
             @*made = ();
         })
         | (:s lex (\w+) '=' <expression>${
+            bailout "TODO $?LINE";
             my $arg = @*made[0];
             put "    .lexical {$arg.type} {$0}";
             put "    bindlex *{$0} {$arg.promote.eval}";
@@ -385,7 +456,7 @@ class Op {
         }
         "    {$op}{$.suffix}" ~ join '', @args.kv.map: -> $i, $arg {
             ' ' ~ do given @sigs[$i] {
-                when any <i s o &> { $arg.eval }
+                when any <i s o & *> { $arg.eval }
                 when any <I S O> { $arg.promote.eval }
                 default { die "panic: unexpected parameter sig '$_'" }
             }
@@ -406,6 +477,17 @@ class Coderef {
     has $.name;
     method type { 'coderef' }
     method eval { "\&{$!name}" }
+}
+
+class Lexref {
+    has $.lex;
+    method type { 'lexref' }
+    method eval { "*{$!lex.name}" }
+}
+
+class Outerref is Lexref {
+    has $.outer;
+    method eval { "*{$.lex.index}!{$!outer}" }
 }
 
 role Alias {
@@ -437,6 +519,18 @@ class Tmp does Alias {
     submethod TWEAK { $!id = $!block.temps{$!type}++ }
     method longname { "tmp{$!block.id}_{sig $.type}{$!id}" }
     method promote { self }
+}
+
+
+class Lex {
+    has $.type;
+    has $.name;
+    has $.index;
+    method ref($outer = 0) {
+        $outer
+            ?? Lexref.new(lex => self)
+            !! Outerref.new(lex => self, :$outer);
+    }
 }
 
 role Value {
@@ -487,6 +581,17 @@ class Cast {
     }
 }
 
+class Delex {
+    has $.ref;
+    method type { $!ref.lex.type }
+    method sig { uc sig $.type }
+    method promote { bailout "TODO $?LINE" }
+    method init { self }
+    method eval($target) {
+        "    getlex {$target} {$!ref.eval}"
+    }
+}
+
 class IBox {
     has $.expr;
     method type { 'obj' }
@@ -523,13 +628,9 @@ sub dest($_) {
     .subst(/'.tiny'?$/, '.moarvm');
 }
 
-sub trace {
-    %*ENV<MOAR_TRACE>.defined &&  %*ENV<MOAR_TRACE> eq '1';
-}
-
 proto MAIN(|c) is export(:MAIN) {
     CATCH {
-        note trace() ?? $_ !! ~$_;
+        note "$_\n" ~ .backtrace.first(none *.is-hidden, *.is-setting);
         exit 1;
     }
     {*}
@@ -539,12 +640,12 @@ multi MAIN(Str $src, Bool :$parse!) {
     ignore-out { parse $src }
 }
 
-multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) { 
+multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) {
     as.compile_code(capture-out({ parse $src }), $dest);
 }
 
 multi MAIN(Str $src, Bool :$dump!) {
-    print capture-out({ parse $src });
+    parse $src;
 }
 
 multi MAIN(Str $src, *@args, Bool :$run!) {
