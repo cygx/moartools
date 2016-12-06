@@ -377,3 +377,5 @@ class MoarAS::Compiler {
     method eval_fh($fh, *@args) { self.eval(self.parse_fh($fh), |@args) }
     method eval_file($file, *@args) { self.eval(self.parse_file($file), |@args) }
 }
+
+nqp::bindcurhllsym('MoarAS::Compiler', MoarAS::Compiler);

@@ -4,13 +4,19 @@
 
 use v6;
 use nqp;
-use MoarAS:from<NQP>;
 
-my \as = MoarAS::Compiler;
-sub dest($_) { .subst(/'.asm'?$/, '.moarvm') }
-sub trace { %*ENV<MOAR_TRACE>.defined &&  %*ENV<MOAR_TRACE> eq '1' }
+nqp::loadbytecode('MoarAS.moarvm');
+my \as = nqp::gethllsym('nqp', 'MoarAS::Compiler');
 
-proto MAIN(|) {
+sub dest($_) {
+    .subst(/'.asm'?$/, '.moarvm');
+}
+
+sub trace {
+    %*ENV<MOAR_TRACE>.defined &&  %*ENV<MOAR_TRACE> eq '1';
+}
+
+proto MAIN(|c) is export {
     CATCH {
         note trace() ?? $_ !! ~$_;
         exit 1;
@@ -19,25 +25,33 @@ proto MAIN(|) {
 }
 
 multi MAIN(Str $src, Bool :$parse!) {
-    as.parse_file($src) }
+    as.parse_file($src);
+}
 
 multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) { 
-    as.compile_file($src, $dest) }
+    as.compile_file($src, $dest);
+}
 
 multi MAIN(Str $src, Bool :$dump!) {
-    put as.parse_file($src).dump }
+    put as.parse_file($src).dump;
+}
 
 multi MAIN(Str $src, *@args, Bool :$run!) {
-    as.eval_file($src, |@args) }
+    as.eval_file($src, |@args);
+}
 
 multi MAIN(Bool :$parse-stdin!) {
-    as.parse_fh(nqp::getstdin()) }
+    as.parse_fh(nqp::getstdin());
+}
 
 multi MAIN(Str $dest, Bool :$compile-stdin!) {
-    as.compile_fh(nqp::getstdin(), $dest) }
+    as.compile_fh(nqp::getstdin(), $dest);
+}
 
 multi MAIN(Bool :$dump-stdin!) {
-    put as.parse_fh(nqp::getstdin()).dump }
+    put as.parse_fh(nqp::getstdin()).dump;
+}
 
 multi MAIN(*@args, Bool :$run-stdin!) {
-    as.eval_fh(nqp::getstdin(), |@args) }
+    as.eval_fh(nqp::getstdin(), |@args);
+}
