@@ -9,11 +9,11 @@ plan 2;
 
 my $tmpfile = 't/tl01.tmp';
 
-my $asm = ~run-perl6 <moartl0 t/hello.tiny>;
-like $asm, /^^ ".done\n" $/, 'compiled';
+my $asm = ~run6 <moartl0 --dump t/hello.tiny>;
+like $asm, /^^ "# ok\n" $/, 'compiled';
 
 unlink $tmpfile;
 spurt $tmpfile, $asm;
 
-my $out = ~run-nqp <<moaras --run $tmpfile>>;
+my $out = ~run6 <moaras --run>, $tmpfile;
 is $out, "hello world\n", 'executed';
