@@ -143,7 +143,6 @@ class Lex { ... }
 class IVal { ... }
 class SVal { ... }
 class Noop { ... }
-class Const { ... }
 class Cast { ... }
 class Delex { ... }
 class IBox { ... }
@@ -257,7 +256,6 @@ sub parse($src --> Nil) {
 
 sub iv(Int() $i) { IVal.new(:$i) }
 sub sv(Str() $s) { SVal.new(:$s) }
-sub const($value) { Const.new(:$value) }
 sub cast($expr, $type) { Cast.new(:$expr, :$type) }
 
 sub objectify($expr) {
@@ -350,11 +348,11 @@ sub block($blockname) {
                 if %*scope{$name}:exists;
 
             my $tmpname = Tmp.new(type => 'str', :$*block,
-                init => const(sv($name)));
+                init => sv($name));
             $tmpname.declare;
 
             my $path = Tmp.new(type => 'str', :$*block,
-                init => const(sv("lib/{$name}.moarvm")));
+                init => sv("lib/{$name}.moarvm"));
             $path.declare;
 
             my $var = Var.new(:$name, type => 'obj', :$*block, init => Noop);
@@ -390,7 +388,7 @@ sub block($blockname) {
         })
         | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
-            my $init = const(iv($value));
+            my $init = iv($value);
             my $var = Var.new(:$name, :$type, :$*block, :$init);
             (%*scope{$name} = $var).declare;
         })
@@ -436,8 +434,7 @@ sub block($blockname) {
             my $name = ~$1;
             my $arg = @*made.pop;
             bailout 'type mismatch' unless $arg.type eq $type;
-            my $init = $arg.init;
-            my $var = Var.new(:$name, :$type, :$*block, :$init);
+            my $var = Var.new(:$name, :$type, :$*block, init => $arg);
             (%*scope{$name} = $var).declare;
         })
         | (:s (\w+) '=' <?{ lookup(~$0) ~~ Var }>(@ops)
@@ -545,7 +542,7 @@ role Alias {
     method declare {
         $!declared = True;
         put "    .var {$.type} {$.longname}";
-        .put with $!init.eval("\${$.longname}");
+        .put with $!init.init("\${$.longname}");
     }
     method eval {
         self.declare unless $!declared;
@@ -582,8 +579,10 @@ role Value {
     method type { ... }
     method sig { sig self.type }
     method eval { ... }
-    method promote { Tmp.new(:$.type, :$*block, init => const(self)) }
-    method init { const(self) }
+    method promote { Tmp.new(:$.type, :$*block, init => self) }
+    method init($target) {
+        "    const_{extsig $.type} {$target} {$.eval}";
+    }
 }
 
 class IVal does Value {
@@ -605,14 +604,7 @@ class SVal does Value {
 }
 
 class Noop {
-    method eval($target) {}
-}
-
-class Const {
-    has $.value;
-    method eval($target) {
-        "    const_{extsig $!value.type} {$target} {$!value.eval}";
-    }
+    method init($target) {}
 }
 
 class Cast {
@@ -620,8 +612,7 @@ class Cast {
     has $.type;
     method sig { uc sig $!type }
     method promote { Tmp.new(:$!type, :$*block, init => self) }
-    method init { self }
-    method eval($target) {
+    method init($target) {
         "    coerce_{sig $!expr.type}{sig $!type} {$target} {$!expr.eval}";
     }
 }
@@ -631,8 +622,7 @@ class Delex {
     method type { $!ref.lex.type }
     method sig { uc sig $.type }
     method promote { bailout "TODO $?LINE" }
-    method init { self }
-    method eval($target) {
+    method init($target) {
         "    getlex {$target} {$!ref.eval}"
     }
 }
@@ -642,8 +632,7 @@ class IBox {
     method type { 'obj' }
     method sig { 'O' }
     method promote { Tmp.new(:type<obj>, :$*block, init => self) }
-    method init { self }
-    method eval($target) {
+    method init($target) {
         "    bootint {$target}\n" ~
         "    box_i {$target} {$!expr.promote.eval} {$target}";
     }
