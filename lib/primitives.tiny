@@ -1,0 +1,33 @@
+ld load() {
+    obj NULL
+    obj BH = boothash
+
+    obj info = create BH
+    obj subinfo = create BH
+    bindkey info, 'integer', subinfo
+
+    obj I8 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(8)
+    composetype I8, info
+
+    obj I16 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(16)
+    composetype I16, info
+
+    obj I32 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(32)
+    composetype I8, info
+
+    obj I64 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(64)
+    composetype I64, info
+
+    lex i8  = I8
+    lex i16 = I16
+    lex i32 = I32
+    lex i64 = I64
+
+    obj context = ctx
+    bindcurhllsym 'primitives', context
+    say 'loaded primitives'
+}

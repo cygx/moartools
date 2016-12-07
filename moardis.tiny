@@ -1,30 +1,54 @@
+lex import {
+    obj i8
+    obj i16
+    obj i32
+    obj i64
+}
+
+lex main : import
+
 fn main() {
-    obj null
-    obj bh = boothash
+    obj NULL
+    obj BH = boothash
 
-    obj byte_type = newtype null, 'P6int'
+#    obj I8 = obj(i8)
+    obj I8 = newtype NULL, 'P6int'
     do {
-        obj info = create bh
-        obj integer_info = create bh
+        obj info = create BH
+        obj subinfo = create BH
         obj bits = obj(8)
-        bindkey info, 'integer', integer_info
-        bindkey integer_info, 'bits', bits
-        composetype byte_type, byte_type, info
+        bindkey info, 'integer', subinfo
+        bindkey subinfo, 'bits', bits
+        composetype I8, info
     }
 
-    obj buf_type = newtype null, 'VMArray'
+    obj BUF = newtype NULL, 'VMArray'
     do {
-        obj info = create bh
-        obj array_info = create bh
-        bindkey info, 'array', array_info
-        bindkey array_info, 'type', byte_type
-        composetype buf_type, buf_type, info
+        obj info = create BH
+        obj subinfo = create BH
+        bindkey info, 'array', subinfo
+        bindkey subinfo, 'type', I8
+        composetype BUF, info
     }
 
-    obj fh = open 'hello.moarvm', 'r'
-    obj buf = create buf_type
+    obj fh = open 'lib/primitives.moarvm', 'r'
+    obj buf = create BUF
     read fh, buf, 8
     close fh
 
-    return 0
+    say 'ok'
+    exit 0
+}
+
+fn import() {
+    loadbytecode 'lib/primitives.moarvm'
+    obj primitives = getcurhllsym 'primitives'
+
+    obj I8 = getlexrel primitives, 'i8'
+    bindlex i8, I8
+
+    obj mainfn = getcode main
+    obj context = ctx
+    forceouterctx mainfn, context
+    main()
 }

@@ -10,7 +10,6 @@ sub op(*@signature, :$suffix, :$dummy) {
 }
 
 my \OPS = {
-    bindcurhllsym   => op(<O S O>),
     bindlex         => op(<* O>),
     boothash        => op(<O>),
     bootintarray    => op(<O>),
@@ -18,7 +17,6 @@ my \OPS = {
     chr             => op(<S I>),
     close           => op(<O>, :suffix<fh>),
     create          => op(<O O>),
-    composetype     => op(<O O O>),
     ctx             => op(<O>),
     dec             => op(<I>, :suffix<i>),
     exit            => op(<I>),
@@ -47,11 +45,19 @@ my \MULTIOPS = {
         op(<S O I>, :suffix<s>).pair,
         op(<O O I>, :suffix<o>).pair,
     ),
+    bindcurhllsym => %(
+        op(<O S O>).pair,
+        op(<S O>, :dummy(+0 => 1)).pair,
+    ),
     bindkey => %(
         op(<O S I>, :suffix<i>).pair,
         op(<O S N>, :suffix<n>).pair,
         op(<O S S>, :suffix<s>).pair,
         op(<O S O>, :suffix<o>).pair,
+    ),
+    composetype => %(
+        op(<O O O>).pair,
+        op(<O O>, :dummy(+0 => 0)).pair,
     ),
     getlex => %(
         op(<I s>, :suffix<ni>).pair,
@@ -145,6 +151,10 @@ sub next-line {
     return $next if $next =:= IterationEnd;
     ++$n;
     $line = $next.trim;
+}
+
+sub frame($name) {
+    @scopes[*-1]{$name};
 }
 
 sub lookup($name) {
@@ -427,10 +437,24 @@ sub block($blockname) {
             @*made = ();
         })
         | (:s lex (\w+) '=' <expression>${
-            bailout "TODO $?LINE";
             my $arg = @*made[0];
-            put "    .lexical {$arg.type} {$0}";
-            put "    bindlex *{$0} {$arg.promote.eval}";
+            my $name = ~$0;
+            my $type = $arg.type;
+
+            my %pad := %lexpads{$frame} //= {};
+            bailout "lexical '$name' already declared"
+                if %pad{$name}:exists;
+
+            %pad{$name} = Lex.new(:$name, :$type, index => +%pad);
+            put "    .lexical {$type} {$name}";
+            put "    bindlex *{$name} {$arg.promote.eval}";
+            @*made = ();
+        })
+        | (:s (\w+)'()'<?{ frame(~$0) ~~ Coderef }>${
+            my $tmp = Tmp.new(type => 'obj', :$*block, init => Noop);
+            $tmp.declare;
+            put "    getcode {$tmp.eval} \&{$0}";
+            put "    .call {$tmp.eval}";
             @*made = ();
         })
         || {bailout}
@@ -630,7 +654,8 @@ sub dest($_) {
 
 proto MAIN(|c) is export(:MAIN) {
     CATCH {
-        note "$_\n" ~ .backtrace.first(none *.is-hidden, *.is-setting);
+        #note "$_\n" ~ .backtrace.first(none *.is-hidden, *.is-setting);
+        note $_;
         exit 1;
     }
     {*}
