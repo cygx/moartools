@@ -120,7 +120,7 @@ class MoarAS::Actions {
     method name($/) { make ~$/ }
     method type($/) { make ~$/ }
     method varexpr:sym<local>($/) { make MAST::Local.new(index => +~$/[0]) }
-    method varexpr:sym<alias>($/) { make theframe().local($<name>.made) }
+    method varexpr:sym<alias>($/) { make theframe().dealias($<name>.made) }
     method constexpr:sym<str>($/) { make MAST::SVal.new(value => ~$/[0]) }
     method constexpr:sym<cstr>($/) { make MAST::SVal.new(value => $<name>.made) }
     method constexpr:sym<uint>($/) { make MAST::IVal.new(value => +~$/, signed => 0) }
@@ -155,14 +155,16 @@ class MoarAS::Actions {
         theframe().add_local($_.made) for $<type>;
     }
     method statement:sym<local2>($/) {
-        theframe().add_local($<type>.made, $<name>.made);
+        my $local := theframe().add_local($<type>.made);
+        theframe().add_alias($<name>.made, $local.index);
     }
     method statement:sym<local3>($/) {
         my $type := $<type>.made;
         bailout('invalid type')
             unless nqp::existskey(%extsuffix, $type);
 
-        my $local := theframe().add_local($type, $<name>.made);
+        my $local := theframe().add_local($type);
+        theframe().add_alias($<name>.made, $local.index);
         my $init := $<constexpr>.made;
         my $suffix := %extsuffix{$type};
         my $op := "const_$suffix";
@@ -189,7 +191,8 @@ class MoarAS::Actions {
         bailout('invalid type')
             unless nqp::existskey(%suffix, $type);
 
-        my $local := theframe().add_local($type, $name);
+        my $local := theframe().add_local($type);
+        theframe().add_alias($name, $local.index);
         theframe().add_op("param_rp_{%suffix{$type}}", $local, $index);
     }
     method statement:sym<flags>($/) {
@@ -219,7 +222,8 @@ class MoarAS::Actions {
 class MoarAS::Frame {
     has $!node;
     has $!uid;
-    has %!locals;
+    has %!aliases;
+    has @!locals;
     has %!lexicals;
     has %!labels;
 
@@ -231,7 +235,8 @@ class MoarAS::Frame {
 
     method BUILD($uid) {
         $!uid := $uid;
-        %!locals := nqp::hash();
+        @!locals := nqp::list();
+        %!aliases := nqp::hash();
         %!lexicals := nqp::hash();
         %!labels := nqp::hash();
     }
@@ -271,11 +276,11 @@ class MoarAS::Frame {
         MAST::Lexical.new(:$index, :$frames_out);
     }
 
-    method local($name) {
-        bailout("local '$name' not declared")
-            unless nqp::existskey(%!locals, $name);
+    method dealias($name) {
+        bailout("alias '$name' not declared")
+            unless nqp::existskey(%!aliases, $name);
 
-        %!locals{$name};
+        %!aliases{$name};
     }
 
     method add_label($name) {
@@ -284,20 +289,24 @@ class MoarAS::Frame {
         $label;
     }
 
-    method add_local($type, $name?) {
+    method add_local($type) {
         bailout('illegal type')
             unless nqp::existskey(%types, $type);
 
         my $index := $!node.add_local(%types{$type});
         my $local := MAST::Local.new(:$index);
-        if nqp::defined($name) {
-            bailout("local '$name' already exists")
-                if nqp::existskey(%!locals, $name);
-
-            %!locals{$name} := $local;
-        }
-
+        nqp::push(@!locals, $local);
         $local;
+    }
+
+    method add_alias($name, $id) {
+        bailout("local %{$id} doesn't exist")
+            if $id < 0 || $id >= +@!locals;
+
+        bailout("alias '$name' already exists")
+            if nqp::existskey(%!aliases, $name);
+
+        %!aliases{$name} := @!locals[$id];
     }
 
     method add_lexical($type, $name) {
