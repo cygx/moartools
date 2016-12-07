@@ -7,5 +7,5 @@
     exit %0
 
 .frame hello
-    .local str hello 'hello world'
+    .var str hello "hello world"
     say $hello

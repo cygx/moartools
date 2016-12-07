@@ -2,8 +2,8 @@
 
 .frame main
     .locals int str
-    .local str OK 'ok'
-    .lexical str ok $OK
+    .var str OK "ok"
+    .lex str ok $OK
     getlex %1 *ok
     print %1
     exit %0

@@ -2,23 +2,23 @@
 .frame main
 
 .frame inner
-    .locals str
+    .local str
     getlex %0 *0!1
     print %0
 
 .frame main
-    .locals int
+    .local int
 
-    .local str OK 'ok'
-    .lexical str ok $OK
+    .var str OK "ok"
+    .lex str ok $OK
 
-    .local obj coderef
-    .local obj context
+    .var obj coderef
+    .var obj context
     getcode $coderef &inner
     ctx $context
     forceouterctx $coderef $context
 
-    .local obj inner
+    .var obj inner
     getcode $inner &inner
     .call $inner
 

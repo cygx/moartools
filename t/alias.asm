@@ -2,7 +2,8 @@
 
 .frame main
     .locals int str
-    .alias ok 1
-    const_s $ok 'ok'
+    .aliases _ ok
+    .alias zero 0
+    const_s $ok "ok"
     print $ok
-    exit %0
+    exit $zero

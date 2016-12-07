@@ -1,8 +1,8 @@
 .hll asm
 
 .frame main
-    .local int i 5
-    .local str s
+    .var int i 5
+    .var str s
 .label loop
     coerce_is $s $i
     print $s

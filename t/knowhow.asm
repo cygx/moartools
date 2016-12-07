@@ -1,16 +1,16 @@
 .hll asm
 
 .frame main
-    .locals int
+    .local int
     exit %0
 
 .frame create_knowhow_type
     checkarity 1 1
     .param str name 0
-    .local str repr 'KnowHOWREPR'
-    .local obj rv
-    .local obj how
-    .local obj method
+    .var str repr "KnowHOWREPR"
+    .var obj rv
+    .var obj how
+    .var obj method
     knowhow $how
     findmeth $method $how :new_type
     .flags obj :str :str
@@ -20,7 +20,7 @@
 
 .frame load
     .set load
-    .local str fn :create_knowhow_type
-    .locals obj
+    .var str fn :create_knowhow_type
+    .local obj
     getcode %1 &create_knowhow_type
     bindcurhllsym %1 $fn %1
