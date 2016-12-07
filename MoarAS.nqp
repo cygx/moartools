@@ -104,6 +104,7 @@ grammar MoarAS::Grammar {
           token statement:sym<local2>   {:s '.local' <type> <name>}
           token statement:sym<lexical3> {:s '.lexical' <type> <name> <varexpr>}
           token statement:sym<lexical2> {:s '.lexical' <type> <name>}
+          token statement:sym<alias>    {:s '.alias' <name> (\d+)}
           token statement:sym<label>    {:s '.label' <name>}
           token statement:sym<param>    {:s '.param' <type> <name> <constexpr>}
           token statement:sym<flags>    {:s '.flags' (':'? <type>)+%<.ws>}
@@ -123,7 +124,9 @@ class MoarAS::Actions {
     method varexpr:sym<alias>($/) { make theframe().dealias($<name>.made) }
     method constexpr:sym<str>($/) { make MAST::SVal.new(value => ~$/[0]) }
     method constexpr:sym<cstr>($/) { make MAST::SVal.new(value => $<name>.made) }
-    method constexpr:sym<uint>($/) { make MAST::IVal.new(value => +~$/, signed => 0) }
+    method constexpr:sym<uint>($/) {
+        make MAST::IVal.new(value => +~$/, signed => 0);
+    }
     method constexpr:sym<int>($/) { make MAST::IVal.new(value => +~$/) }
     method constexpr:sym<num>($/) { make MAST::NVal.new(value => +~$/) }
     method refexpr:sym<lexical>($/) { make theframe().lexical($<name>.made) }
@@ -182,6 +185,9 @@ class MoarAS::Actions {
         my $init := $<varexpr>.made;
         theframe().add_op('bindlex', $lexical, $init);
 
+    }
+    method statement:sym<alias>($/) {
+        theframe().add_alias($<name>.made, +~$/[0]);
     }
     method statement:sym<label>($/) { theframe().add_label($<name>.made) }
     method statement:sym<param>($/) {

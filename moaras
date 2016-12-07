@@ -12,13 +12,9 @@ sub dest($_) {
     .subst(/'.asm'?$/, '.moarvm');
 }
 
-sub trace {
-    %*ENV<MOAR_TRACE>.defined &&  %*ENV<MOAR_TRACE> eq '1';
-}
-
 proto MAIN(|c) is export {
     CATCH {
-        note trace() ?? $_ !! ~$_;
+        note "$_\n" ~ .backtrace.grep(none *.is-hidden, *.is-setting)[^2].join;
         exit 1;
     }
     {*}
