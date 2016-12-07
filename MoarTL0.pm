@@ -322,7 +322,7 @@ sub lexpad($framename) {
                 if %pad{$name}:exists;
 
             %pad{$name} = Lex.new(:$name, :$type, index => +%pad);
-            put "    .lexical $type $name";
+            put "    .lex $type $name";
         })
         | ('}' ${ return })
         || {bailout}
@@ -467,7 +467,7 @@ sub block($blockname) {
                 if %pad{$name}:exists;
 
             %pad{$name} = Lex.new(:$name, :$type, index => +%pad);
-            put "    .lexical {$type} {$name}";
+            put "    .lex {$type} {$name}";
             put "    bindlex *{$name} {$arg.promote.eval}";
             @*made = ();
         })
@@ -544,7 +544,7 @@ role Alias {
     method sig { uc sig $!type }
     method declare {
         $!declared = True;
-        put "    .local {$.type} {$.longname}";
+        put "    .var {$.type} {$.longname}";
         .put with $!init.eval("\${$.longname}");
     }
     method eval {
@@ -595,7 +595,7 @@ class IVal does Value {
 class SVal does Value {
     has $.s;
     method type { 'str' }
-    method eval { "'{$.enc}'" }
+    method eval { "\"{$.enc}\"" }
     sub enc($_) {
         when ^0x100 { .fmt("\\%02X") }
         when ^0x10000 { .fmt("\\u%04X") }
@@ -675,8 +675,7 @@ sub dest($_) {
 
 proto MAIN(|c) is export(:MAIN) {
     CATCH {
-        #note "$_\n" ~ .backtrace.first(none *.is-hidden, *.is-setting);
-        note $_;
+        note "$_\n" ~ .backtrace.grep(none *.is-hidden, *.is-setting)[^2].join;
         exit 1;
     }
     {*}
