@@ -16,8 +16,7 @@ fn main() {
 }
 
 fn import() {
-    loadbytecode 'lib/arrays.moarvm'
-    obj arrays = getcurhllsym 'arrays'
+    use arrays
 
     obj ARRAY_U8 = getlexrel arrays, 'ArrayUInt8'
     bindlex ArrayUInt8, ARRAY_U8

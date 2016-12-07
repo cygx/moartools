@@ -1,6 +1,8 @@
 # Copyright 2016 cygx <cygx@cpan.org>
 # Distributed under the Boost Software License, Version 1.0
 
+# TODO: reset block temps after each statement!!!
+
 use v6;
 
 class Op { ... }
@@ -342,6 +344,25 @@ sub block($blockname) {
     while ($_ := next-line) !=:= IterationEnd { /^[
         | [\#|$]
         | (:s '.'(\w+) '{'${ block ~$0 })
+        | (:s use (\w+)${
+            my $name = ~$0;
+            bailout "local '$name' already exists"
+                if %*scope{$name}:exists;
+
+            my $tmpname = Tmp.new(type => 'str', :$*block,
+                init => const(sv($name)));
+            $tmpname.declare;
+
+            my $path = Tmp.new(type => 'str', :$*block,
+                init => const(sv("lib/{$name}.moarvm")));
+            $path.declare;
+
+            my $var = Var.new(:$name, type => 'obj', :$*block, init => Noop);
+            (%*scope{$name} = $var).declare;
+
+            put "    loadbytecode {$path.eval} {$path.eval}";
+            put "    getcurhllsym {$var.eval} {$tmpname.eval}";
+        })
         | (:s do '{'${ block "do{$*block.temps<do>++}" })
         | (:s done <expression>${
             bailout 'done outside do block' unless $*dovar;
