@@ -141,6 +141,7 @@ class Var { ... }
 class Tmp { ... }
 class Lex { ... }
 class IVal { ... }
+class NVal { ... }
 class SVal { ... }
 class Noop { ... }
 class Cast { ... }
@@ -255,6 +256,7 @@ sub parse($src --> Nil) {
 }
 
 sub iv(Int() $i) { IVal.new(:$i) }
+sub nv(Num() $n) { NVal.new(:$n) }
 sub sv(Str() $s) { SVal.new(:$s) }
 sub cast($expr, $type) { Cast.new(:$expr, :$type) }
 
@@ -282,6 +284,7 @@ sub sig($_) {
 
 sub extsig($_) {
     when 'int' { 'i64' }
+    when 'num' { 'n64' }
     when 'str' { 's' }
     default { bailout "no extended sig for type $_" }
 }
@@ -293,6 +296,7 @@ sub argsig(*@args) {
 my token subexpression {
     | ((\w+) <?{ lookup(~$0) ~~ Var|Coderef }> { push @*made, lookup(~$0) })
     | ((\w+) <?{ lexlookup(~$0) ~~ Lexref }> { push @*made, lexlookup(~$0) })
+    | ((\d+ '.' \d+ ['e' <[+-]>? \d+ ]?) { push @*made, nv(~$0) })
     | ((\d+) { push @*made, iv(~$0) })
     | ("'" (<-[']>*) "'" { push @*made, sv(~$0) })
 }
@@ -589,6 +593,12 @@ class IVal does Value {
     has $.i;
     method type { 'int' }
     method eval { "$!i" }
+}
+
+class NVal does Value {
+    has $.n;
+    method type { 'num' }
+    method eval { "$!n" }
 }
 
 class SVal does Value {
