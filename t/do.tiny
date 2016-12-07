@@ -1,6 +1,6 @@
 fn main() {
     str ok = do {
-        done 'ok'
+        done "ok"
     }
     print ok
     return 0

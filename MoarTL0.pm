@@ -298,7 +298,7 @@ my token subexpression {
     | ((\w+) <?{ lexlookup(~$0) ~~ Lexref }> { push @*made, lexlookup(~$0) })
     | ((\d+ '.' \d+ ['e' <[+-]>? \d+ ]?) { push @*made, nv(~$0) })
     | ((\d+) { push @*made, iv(~$0) })
-    | ("'" (<-[']>*) "'" { push @*made, sv(~$0) })
+    | ('"' (<-["]>*) '"' { push @*made, sv(~$0) })
 }
 
 my token expression {
