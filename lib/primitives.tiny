@@ -16,7 +16,7 @@ ld load() {
 
     obj I32 = newtype NULL, 'P6int'
     bindkey subinfo, 'bits', obj(32)
-    composetype I8, info
+    composetype I32, info
 
     obj I64 = newtype NULL, 'P6int'
     bindkey subinfo, 'bits', obj(64)

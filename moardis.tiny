@@ -11,17 +11,7 @@ fn main() {
     obj NULL
     obj BH = boothash
 
-#    obj I8 = obj(i8)
-    obj I8 = newtype NULL, 'P6int'
-    do {
-        obj info = create BH
-        obj subinfo = create BH
-        obj bits = obj(8)
-        bindkey info, 'integer', subinfo
-        bindkey subinfo, 'bits', bits
-        composetype I8, info
-    }
-
+    obj I8 = obj(i8)
     obj BUF = newtype NULL, 'VMArray'
     do {
         obj info = create BH

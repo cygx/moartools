@@ -2,13 +2,18 @@ PROVE = prove -eperl6
 NQP   = nqp
 RM_RF = rm -rf
 
-BYTECODE = MoarAS.moarvm
+NQPBC    = MoarAS.moarvm
+TINYBC   = lib/primitives.moarvm moardis.moarvm
+BYTECODE = $(NQPBC) $(TINYBC)
 GARBAGE  = t/*.tmp t/*.moarvm
 
 build: $(BYTECODE)
 
-MoarAS.moarvm: %.moarvm: %.nqp
+$(NQPBC): %.moarvm: %.nqp
 	$(NQP) --target=mbc --output=$@ $<
+
+$(TINYBC): %.moarvm: %.tiny
+	./moartl0 --compile $< $@
 
 verbose: PROVE += -v
 test verbose: MoarAS.moarvm
