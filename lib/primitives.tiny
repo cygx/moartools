@@ -6,28 +6,50 @@ ld load() {
     obj subinfo = create BH
     bindkey info, 'integer', subinfo
 
-    obj I8 = newtype NULL, 'P6int'
+    obj INT8 = newtype NULL, 'P6int'
     bindkey subinfo, 'bits', obj(8)
-    composetype I8, info
+    composetype INT8, info
 
-    obj I16 = newtype NULL, 'P6int'
+    obj INT16 = newtype NULL, 'P6int'
     bindkey subinfo, 'bits', obj(16)
-    composetype I16, info
+    composetype INT16, info
 
-    obj I32 = newtype NULL, 'P6int'
+    obj INT32 = newtype NULL, 'P6int'
     bindkey subinfo, 'bits', obj(32)
-    composetype I32, info
+    composetype INT32, info
 
-    obj I64 = newtype NULL, 'P6int'
+    obj INT64 = newtype NULL, 'P6int'
     bindkey subinfo, 'bits', obj(64)
-    composetype I64, info
+    composetype INT64, info
 
-    lex i8  = I8
-    lex i16 = I16
-    lex i32 = I32
-    lex i64 = I64
+    bindkey subinfo, 'unsigned', obj(1)
+
+    obj UINT8 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(8)
+    composetype UINT8, info
+
+    obj UINT16 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(16)
+    composetype UINT16, info
+
+    obj UINT32 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(32)
+    composetype UINT32, info
+
+    obj UINT64 = newtype NULL, 'P6int'
+    bindkey subinfo, 'bits', obj(64)
+    composetype UINT64, info
+
+    lex Int8  = INT8
+    lex Int16 = INT16
+    lex Int32 = INT32
+    lex Int64 = INT64
+
+    lex UInt8  = UINT8
+    lex UInt16 = UINT16
+    lex UInt32 = UINT32
+    lex UInt64 = UINT64
 
     obj context = ctx
     bindcurhllsym 'primitives', context
-    say 'loaded primitives'
 }

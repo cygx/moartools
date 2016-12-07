@@ -3,7 +3,7 @@ NQP   = nqp
 RM_RF = rm -rf
 
 NQPBC    = MoarAS.moarvm
-TINYBC   = lib/primitives.moarvm moardis.moarvm
+TINYBC   = lib/primitives.moarvm lib/arrays.moarvm moardis.moarvm
 BYTECODE = $(NQPBC) $(TINYBC)
 GARBAGE  = t/*.tmp t/*.moarvm
 

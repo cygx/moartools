@@ -1,26 +1,11 @@
 lex import {
-    obj i8
-    obj i16
-    obj i32
-    obj i64
+    obj ArrayUInt8
 }
 
 lex main : import
 
 fn main() {
-    obj NULL
-    obj BH = boothash
-
-    obj I8 = obj(i8)
-    obj BUF = newtype NULL, 'VMArray'
-    do {
-        obj info = create BH
-        obj subinfo = create BH
-        bindkey info, 'array', subinfo
-        bindkey subinfo, 'type', I8
-        composetype BUF, info
-    }
-
+    obj BUF = obj(ArrayUInt8)
     obj fh = open 'lib/primitives.moarvm', 'r'
     obj buf = create BUF
     read fh, buf, 8
@@ -31,11 +16,11 @@ fn main() {
 }
 
 fn import() {
-    loadbytecode 'lib/primitives.moarvm'
-    obj primitives = getcurhllsym 'primitives'
+    loadbytecode 'lib/arrays.moarvm'
+    obj arrays = getcurhllsym 'arrays'
 
-    obj I8 = getlexrel primitives, 'i8'
-    bindlex i8, I8
+    obj ARRAY_U8 = getlexrel arrays, 'ArrayUInt8'
+    bindlex ArrayUInt8, ARRAY_U8
 
     obj mainfn = getcode main
     obj context = ctx
