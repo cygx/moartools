@@ -1,6 +1,15 @@
 lex load {
     use primitives
-    import obj UInt8 from primitives
+
+    import obj Int8  from primitives
+    import obj Int16 from primitives
+    import obj Int32 from primitives
+    import obj Int64 from primitives
+
+    import obj UInt8  from primitives
+    import obj UInt16 from primitives
+    import obj UInt32 from primitives
+    import obj UInt64 from primitives
 }
 
 ld load() {
@@ -13,9 +22,58 @@ ld load() {
 
     do {
         obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", Int8
+        composetype type, info
+        lex ArrayInt8 = type
+    }
+
+    do {
+        obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", Int16
+        composetype type, info
+        lex ArrayInt16 = type
+    }
+
+    do {
+        obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", Int32
+        composetype type, info
+        lex ArrayInt32 = type
+    }
+
+    do {
+        obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", Int64
+        composetype type, info
+        lex ArrayInt64 = type
+    }
+
+    do {
+        obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", UInt8
         composetype type, info
         lex ArrayUInt8 = type
+    }
+
+    do {
+        obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", UInt16
+        composetype type, info
+        lex ArrayUInt16 = type
+    }
+
+    do {
+        obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", UInt32
+        composetype type, info
+        lex ArrayUInt32 = type
+    }
+
+    do {
+        obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", UInt64
+        composetype type, info
+        lex ArrayUInt64 = type
     }
 
     obj context = ctx
