@@ -13,15 +13,11 @@ NOTE: All of this is work in progress. Currently, only a few bits and pieces
 
 moaras - assembler targetting MoarVM bytecode, written in NQP
   Usage:
-    moaras --parse <src>
-    moaras --compile <src> [<dest>]
-    moaras --dump <src>
-    moaras --run <src> [<args> ...]
-
-    moaras --parse-stdin
-    moaras --compile-stdin <dest>
-    moaras --dump-stdin
-    moaras --run-stdin [<args> ...]
+    moaras --parse|-p [<src>]
+    moaras --dump|-d [<src>]
+    moaras --compile|-c <src>
+    moaras --compile-to=<Str> [<src>]
+    moaras --run|-r [<src>]
 
 
 moardis - disassembler for MoarVM bytecode, written in MoarTL [TODO]
@@ -29,15 +25,11 @@ moardis - disassembler for MoarVM bytecode, written in MoarTL [TODO]
 
 moartl0 - stage 0 compiler for MoarTL, written in Perl 6
   Usage:
-    moartl0 --parse <src>
-    moartl0 --compile <src> [<dest>]
-    moartl0 --dump <src>
-    moartl0 --run <src> [<args> ...]
-
-    moartl0 --parse-stdin
-    moartl0 --compile-stdin <dest>
-    moartl0 --dump-stdin
-    moartl0 --run-stdin [<args> ...]
+    moartl0 --parse|-p [<src>]
+    moartl0 --dump|-d [<src>]
+    moartl0 --compile|-c <src>
+    moartl0 --compile-to=<Str> [<src>]
+    moartl0 --run|-r [<src>]
 
 
 moartl - compiler for MoarTL, written in MoarTL [TODO]

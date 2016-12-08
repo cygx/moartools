@@ -9,11 +9,11 @@ plan 2;
 
 my $tmpfile = 't/tl01.tmp';
 
-my $asm = ~run6 <moartl0 --dump t/hello.tiny>;
+my $asm = ~run6 <moartl0 -d t/hello.tiny>;
 like $asm, /^^ "# ok\n" $/, 'compiled';
 
 unlink $tmpfile;
 spurt $tmpfile, $asm;
 
-my $out = ~run6 <moaras --run>, $tmpfile;
+my $out = ~run6 <moaras -r>, $tmpfile;
 is $out, "hello world\n", 'executed';

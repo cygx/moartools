@@ -20,34 +20,26 @@ proto MAIN(|c) is export {
     {*}
 }
 
-multi MAIN(Str $src, Bool :$parse!) {
-    as.parse_file($src);
+multi MAIN(Str $src?, Bool :parse(:$p)!) {
+    $src ?? as.parse_file($src)
+         !! as.parse_fh(nqp::getstdin());
 }
 
-multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) { 
-    as.compile_file($src, $dest);
+multi MAIN(Str $src?, Bool :dump(:$d)!) {
+    put ($src ?? as.parse_file($src)
+              !! as.parse_fh(nqp::getstdin())).dump;
 }
 
-multi MAIN(Str $src, Bool :$dump!) {
-    put as.parse_file($src).dump;
+multi MAIN(Str $src!, Bool :compile(:$c)!) {
+    as.compile_file($src, dest($src))
 }
 
-multi MAIN(Str $src, *@args, Bool :$run!) {
-    as.eval_file($src, |@args);
+multi MAIN(Str $src?, Str :compile-to($dest)!) {
+    $src ?? as.compile_file($src, $dest)
+         !! as.compile_fh(nqp::getstdin(), $dest);
 }
 
-multi MAIN(Bool :$parse-stdin!) {
-    as.parse_fh(nqp::getstdin());
-}
-
-multi MAIN(Str $dest, Bool :$compile-stdin!) {
-    as.compile_fh(nqp::getstdin(), $dest);
-}
-
-multi MAIN(Bool :$dump-stdin!) {
-    put as.parse_fh(nqp::getstdin()).dump;
-}
-
-multi MAIN(*@args, Bool :$run-stdin!) {
-    as.eval_fh(nqp::getstdin(), |@args);
+multi MAIN(Str $src?, Bool :run(:$r)!) {
+    $src ?? as.eval_file($src)
+         !! as.eval_fh(nqp::getstdin());
 }

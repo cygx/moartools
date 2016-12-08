@@ -10,5 +10,5 @@ my @scripts =
     't/alias.asm' => 'ok';
 
 plan +@scripts;
-is ~run6(<moaras --run>, .key), .value, .key
+is ~run6(<moaras -r>, .key), .value, .key
     for @scripts;

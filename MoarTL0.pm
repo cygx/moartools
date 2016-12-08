@@ -699,34 +699,33 @@ sub capture-asm(&block) {
     @asm.join;
 }
 
-sub iter($_) { .IO.lines(:close) }
-
 proto MAIN(|) is export(:MAIN) {
     CATCH {
         note "$_\n" ~ .backtrace.grep(none *.is-hidden, *.is-setting)[^2].join;
         exit 1;
     }
+
+    @*ARGS.shift;
     {*}
 }
 
-multi MAIN(Str $src, Bool :$parse!) {
+multi MAIN(Str $src?, Bool :parse(:$p)!) {
     temp &asm = -> $ {}
-    parse iter($src);
+    parse lines;
 }
 
-multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) {
-    as.compile_code(capture-asm({ parse iter($src) }), $dest);
+multi MAIN(Str $src?, Bool :dump(:$d)!) {
+    parse lines;
 }
 
-multi MAIN(Str $src, Bool :$dump!) {
-    parse iter($src);
+multi MAIN(Str $src!, Bool :compile(:$c)!) {
+    as.compile_code(capture-asm({ parse lines }), dest($src));
 }
 
-multi MAIN(Str $src, *@args, Bool :$run!) {
-    as.eval_code(capture-asm({ parse iter($src) }), |@args);
+multi MAIN(Str $src?, Str :compile-to($dest)!) {
+    as.compile_code(capture-asm({ parse lines }), $dest);
 }
 
-multi MAIN(Bool :$parse-stdin!) { MAIN '-', :parse }
-multi MAIN(Str $dest, Bool :$compile-stdin!) { MAIN '-', $dest, :compile }
-multi MAIN(Bool :$dump-stdin!) { MAIN '-', :dump }
-multi MAIN(*@args, Bool :$run-stdin!) { MAIN '-', @args, :run }
+multi MAIN(Str $src?, Bool :run(:$r)!) {
+    as.eval_code(capture-asm({ parse lines }));
+}

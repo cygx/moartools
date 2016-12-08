@@ -11,5 +11,5 @@ my @scripts =
     't/box.tiny' => '42';
 
 plan +@scripts;
-is ~run6(<moartl0 --run>, .key), .value, .key
+is ~run6(<moartl0 -r>, .key), .value, .key
     for @scripts;
