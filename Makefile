@@ -19,6 +19,15 @@ verbose: PROVE += -v
 test verbose: $(BYTECODE)
 	$(PROVE) t
 
+t-as: MoarAS.moarvm
+	$(PROVE) $(sort $(wildcard t/as*.t))
+
+t-tl: MoarAS.moarvm
+	$(PROVE) $(sort $(wildcard t/tl*.t))
+
+t-dis: $(BYTECODE)
+	$(PROVE) $(sort $(wildcard t/dis*.t))
+
 realclean: GARBAGE += .precomp $(BYTECODE)
 clean realclean:
 	$(RM_RF) $(GARBAGE)
