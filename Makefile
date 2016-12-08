@@ -16,7 +16,7 @@ $(TINYBC): %.moarvm: %.tiny MoarTL0.pm
 	./moartl0 --compile $< $@
 
 verbose: PROVE += -v
-test verbose: MoarAS.moarvm
+test verbose: $(BYTECODE)
 	$(PROVE) t
 
 realclean: GARBAGE += .precomp $(BYTECODE)

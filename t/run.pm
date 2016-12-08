@@ -17,11 +17,16 @@ sub spawn($cmd, @args, $cwd, $env) {
 }
 
 sub run6(*@args, :$cwd, :$env) is export {
-    my $perl6 = %*ENV<PERL6> || ~$*EXECUTABLE;
-    spawn($perl6, @args, $cwd, $env);
+    my $exe = %*ENV<PERL6> || ~$*EXECUTABLE;
+    spawn($exe, @args, $cwd, $env);
 }
 
 sub run-nqp(*@args, :$cwd, :$env) is export {
-    my $nqp = %*ENV<NQP> || $*EXECUTABLE.flip.subst('6lrep', 'pqn').flip;
-    spawn($nqp, @args, $cwd, $env);
+    my $exe = %*ENV<NQP> || $*EXECUTABLE.flip.subst('6lrep', 'pqn').flip;
+    spawn($exe, @args, $cwd, $env);
+}
+
+sub run-moar(*@args, :$cwd, :$env) is export {
+    my $exe = %*ENV<MOAR> || ~$*EXECUTABLE.parent.child('moar');
+    spawn($exe, @args, $cwd, $env);
 }
