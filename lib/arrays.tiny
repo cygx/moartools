@@ -1,19 +1,22 @@
-ld load() {
-    loadbytecode "lib/primitives.moarvm"
-    obj primitives = getcurhllsym "primitives"
+lex load {
+    use primitives
+    import obj UInt8 from primitives
+}
 
+ld load() {
     obj NULL
     obj BH = boothash
-    obj U8 = getlexrel primitives, "UInt8"
 
-    obj ARRAY_U8 = newtype NULL, "VMArray"
     obj info = create BH
     obj subinfo = create BH
     bindkey info, "array", subinfo
-    bindkey subinfo, "type", U8
-    composetype ARRAY_U8, info
 
-    lex ArrayUInt8 = ARRAY_U8
+    do {
+        obj type = newtype NULL, "VMArray"
+        bindkey subinfo, "type", UInt8
+        composetype type, info
+        lex ArrayUInt8 = type
+    }
 
     obj context = ctx
     bindcurhllsym "arrays", context

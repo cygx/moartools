@@ -279,9 +279,8 @@ sub extsig($_) {
     default { bailout "no extended sig for type $_" }
 }
 
-sub argsig(*@args) {
-    @args>>.sig.join;
-}
+sub argsig(*@args) { @args>>.sig.join }
+sub multisig(*@args) { @args>>.multisig.join }
 
 my token subexpression {
     | ((\w+) <?{ lookup(~$0) ~~ Var|Coderef }> { push @*made, lookup(~$0) })
@@ -481,7 +480,7 @@ sub parse-block($blockname) {
             bailout "TODO $?LINE"
         })
         | (:s (@multiops) <expression>*%[<.ws>?','<.ws>?]${
-            asm find_multi(~$0, argsig(@*made)).eval(~$0, @*made);
+            asm find_multi(~$0, multisig(@*made)).eval(~$0, @*made);
             @*made = ();
         })
         | (:s lex (\w+) '=' <expression>${
@@ -548,6 +547,8 @@ class Block {
 class Coderef {
     has $.name;
     method type { 'coderef' }
+    method sig { '&' }
+    method multisig { 'O' }
     method eval { "\&{$!name}" }
     method promote { tmp 'obj', CodeBox.new(ref => self) }
 }
@@ -555,6 +556,8 @@ class Coderef {
 class Lexref {
     has $.lex;
     method type { 'lexref' }
+    method sig { '*' }
+    method multisig { uc sig $!lex.type }
     method eval { "*{$!lex.name}" }
     method promote { tmp $!lex.type, Delex.new(ref => self) }
 }
@@ -570,6 +573,7 @@ role Local {
     has $!declared;
     method longname { ... }
     method sig { uc sig $!type }
+    method multisig { self.sig }
     method promote { self }
     method eval { "\${$.longname}" }
     method declare {
@@ -601,6 +605,7 @@ class Lex {
 role Value {
     method type { ... }
     method sig { sig self.type }
+    method multisig { self.sig }
     method eval { ... }
     method promote { tmp($.type, self) }
     method init($target) {
@@ -640,6 +645,7 @@ class Cast {
     has $.expr;
     has $.type;
     method sig { uc sig $!type }
+    method multisig { self.sig }
     method promote { tmp($!type, self) }
     method init($target) {
         asm "    coerce_{sig $!expr.type}{sig $!type} "
@@ -651,6 +657,7 @@ class Delex {
     has $.ref;
     method type { $!ref.lex.type }
     method sig { uc sig $.type }
+    method multisig { self.sig }
     method init($target) { asm "    getlex {$target.eval} {$!ref.eval}" }
 }
 
@@ -658,6 +665,7 @@ class CodeBox {
     has $.ref;
     method type { 'obj' }
     method sig { 'O' }
+    method multisig { 'O' }
     method init($target) { asm "    getcode {$target.eval} {$!ref.eval}" }
 }
 
@@ -665,6 +673,7 @@ class IBox {
     has $.expr;
     method type { 'obj' }
     method sig { 'O' }
+    method multisig { 'O' }
     method promote { tmp('obj', self) }
     method init($target) {
         my $eval = $target.eval;
