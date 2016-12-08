@@ -1,9 +1,9 @@
 # Copyright 2016 cygx <cygx@cpan.org>
 # Distributed under the Boost Software License, Version 1.0
 
-# TODO: reset block temps after each statement!!!
-
 use v6;
+
+my &asm = &put;
 
 class Op { ... }
 
@@ -103,11 +103,17 @@ my $lines;
 my $line;
 my $n;
 
-my @scopes;
+my %unit;
+my @scopes = $(%unit);
 my %lexpads;
 my %lexchain;
 my $blocks;
+my $doblocks;
 my $frame;
+my $block;
+my $vars;
+my %temps;
+my %temptops;
 
 class MoarTLException is Exception {
     has $.msg;
@@ -148,6 +154,19 @@ class Cast { ... }
 class Delex { ... }
 class IBox { ... }
 
+sub tmp($type, $init = Noop) {
+    my $id = %temptops{$type}++;
+    my $tmp = %temps{$type}[$id] //= Tmp.new(:$type, :$id).declare;
+    $init.init($tmp);
+    $tmp;
+}
+
+sub var($type, $name, $init = Noop) {
+    my $var = Var.new(:$name, :$type, id => $vars++).declare;
+    $init.init($var);
+    $var;
+}
+
 sub next-line {
     my $next := $lines.pull-one;
     return $next if $next =:= IterationEnd;
@@ -155,9 +174,7 @@ sub next-line {
     $line = $next.trim;
 }
 
-sub frame($name) {
-    @scopes[*-1]{$name};
-}
+sub frame($name) { %unit{$name} }
 
 sub lookup($name) {
     for @scopes {
@@ -196,14 +213,12 @@ sub find_multi($op, $argsig) {
     }
 }
 
-sub block($name) { ... }
-sub lexpad($name) { ... }
+sub parse-frame { ... }
+sub parse-block($name) { ... }
+sub parse-lexpad($name) { ... }
 
 sub parse($src --> Nil) {
-    put ".hll tiny";
-
-    my %*scope;
-    @scopes = $(%*scope);
+    asm ".hll tiny";
 
     $n = 0;
     $lines := $src.IO.lines(:close).iterator();
@@ -212,13 +227,13 @@ sub parse($src --> Nil) {
         | [\#|$]
         | (:s fn (\w+)${
             my $name = ~$0;
-            %*scope{$name} //= Coderef.new(:$name);
-            put ".frame $name";
+            %unit{$name} //= Coderef.new(:$name);
+            asm ".frame $name";
         })
         | (:s lex (\w+) '{'${
             my $name := ~$0;
-            %*scope{$name} //= Coderef.new(:$name);
-            put ".frame $name";
+            %unit{$name} //= Coderef.new(:$name);
+            asm ".frame $name";
             lexpad $name;
         })
         | (:s lex (\w+) ':' (\w+)${
@@ -232,27 +247,12 @@ sub parse($src --> Nil) {
 
             %lexchain{$child} = $parent;
         })
-        | (:s ld (\w+)'()' '{'${
-            my $name = ~$0;
-            %*scope{$name} //= Coderef.new(:$name);
-            put ".frame $name";
-            put ".set load";
-            $blocks = 0;
-            $frame = $name;
-            block $name;
-        })
-        | (:s fn (\w+)'()' '{'${
-            my $name = ~$0;
-            %*scope{$name} //= Coderef.new(:$name);
-            put ".frame $name";
-            $blocks = 0;
-            $frame = $name;
-            block "__$name";
-        })
+        | (:s ld (\w+)'()' '{'${ parse-frame ~$0, :load })
+        | (:s fn (\w+)'()' '{'${ parse-frame ~$0 })
         || {bailout}
     ]/ }
 
-    put '# ok';
+    asm '# ok';
 }
 
 sub iv(Int() $i) { IVal.new(:$i) }
@@ -320,11 +320,11 @@ sub lexpad($framename) {
         | (:s (@types) (\w+)${
             my $type = ~$0;
             my $name = ~$1;
-            bailout "lexical '$name' already declared"
+            bailout "'$name' already declared", :lex
                 if %pad{$name}:exists;
 
             %pad{$name} = Lex.new(:$name, :$type, index => +%pad);
-            put "    .lex $type $name";
+            asm "    .lex $type $name";
         })
         | ('}' ${ return })
         || {bailout}
@@ -333,82 +333,90 @@ sub lexpad($framename) {
     bailout 'unclosed block';
 }
 
-sub block($blockname) {
-    my %*scope;
-    my $*block = Block.new(name => $blockname, id => $blocks++);
-    %*scope{$blockname} = $*block;
-    @scopes.unshift(%*scope);
+sub parse-frame($name, :$load, :$main) {
+    asm ".frame $name";
+    asm '.set load' if $load;
+    asm '.set main' if $main;
+
+    %unit{$name} //= Coderef.new(:$name);
+    $blocks = 0;
+    $doblocks = 0;
+    $frame = $name;
+    $vars = 0;
+    %temps = ();
+    %temptops = ();
+
+    parse-block $name;
+}
+
+sub parse-block($blockname) {
+    my %scope;
+    temp $block = Block.new(name => $blockname, id => $blocks++);
+    %scope{$blockname} = $block;
+    @scopes.unshift(%scope);
     LEAVE @scopes.shift;
 
-    put ".label {$*block.bra}";
+    asm ".label {$block.bra}";
 
     my @*made;
-    while ($_ := next-line) !=:= IterationEnd { /^[
+    while ($_ := next-line) !=:= IterationEnd {
+        %temptops = ();
+        /^[
         | [\#|$]
-        | (:s '.'(\w+) '{'${ block ~$0 })
+        | (:s '.'(\w+) '{'${ parse-block ~$0 })
         | (:s use (\w+)${
             my $name = ~$0;
             bailout "local '$name' already exists"
-                if %*scope{$name}:exists;
+                if %scope{$name}:exists;
 
-            my $tmpname = Tmp.new(type => 'str', :$*block,
-                init => sv($name));
-            $tmpname.declare;
+            my $tmpname = tmp('str', sv($name));
+            my $path = tmp('str', sv("lib/{$name}.moarvm"));
+            my $var = var('obj', $name);
+            %scope{$name} = $var;
 
-            my $path = Tmp.new(type => 'str', :$*block,
-                init => sv("lib/{$name}.moarvm"));
-            $path.declare;
-
-            my $var = Var.new(:$name, type => 'obj', :$*block, init => Noop);
-            (%*scope{$name} = $var).declare;
-
-            put "    loadbytecode {$path.eval} {$path.eval}";
-            put "    getcurhllsym {$var.eval} {$tmpname.eval}";
+            asm "    loadbytecode {$path.eval} {$path.eval}";
+            asm "    getcurhllsym {$var.eval} {$tmpname.eval}";
         })
-        | (:s do '{'${ block "do{$*block.temps<do>++}" })
+        | (:s do '{'${ parse-block "do{$doblocks++}" })
         | (:s done <expression>${
             bailout 'done outside do block' unless $*dovar;
-            put find_multi('set', argsig($*dovar, @*made[0]))
+            asm find_multi('set', argsig($*dovar, @*made[0]))
                 .eval('set', $*dovar, @*made[0]);
             @*made = ();
         })
         | ('}' ${
-            put ".label {$*block.ket}";
+            asm ".label {$block.ket}";
             return;
         })
         | (:s (@types) (\w+)${
             my ($type, $name) = ~<<$/;
-            my $init = Noop;
-            my $var = Var.new(:$name, :$type, :$*block, :$init);
-            (%*scope{$name} = $var).declare;
+            %scope{$name} = var($type, $name);
         })
         | (:s (@types) (\w+) '=' do '{'${
             my ($type, $name) = ~<<$/;
-            my $init = Noop;
-            my $var = Var.new(:$name, :$type, :$*block, :$init);
-            (%*scope{$name} = $var).declare;
+            my $var = var($type, $name);
+            %scope{$name} = $var;
             my $*dovar = $var;
-            block "do{$*block.temps<do>++}";
+            parse-block "do{$doblocks++}";
         })
         | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
-            my $init = iv($value);
-            my $var = Var.new(:$name, :$type, :$*block, :$init);
-            (%*scope{$name} = $var).declare;
+            my $var = var($type, $name, iv($value));
+            %scope{$name} = $var;
         })
         | (:s next (\w+)$ {is-label ~$0}{
-            put "    goto \@{lookup(~$0).bra}";
+            asm "    goto \@{lookup(~$0).bra}";
         })
         | (:s next (\w+) {is-label ~$0} if <expression>${
-            put "    if_i {@*made[0].eval} \@{lookup(~$0).bra}";
+            asm "    if_i {@*made[0].eval} \@{lookup(~$0).bra}";
             @*made = ();
         })
         | (:s break (\w+) {is-label ~$0} unless <expression>${
-            put "    unless_i {@*made[0].eval} \@{lookup(~$0).ket}";
+            asm "    unless_i {@*made[0].eval} \@{lookup(~$0).ket}";
             @*made = ();
         })
         | (:s (@ops) <expression>**{OPS{$0}.arity}%[<.ws>?','<.ws>?]${
-            put OPS{~$0}.eval(~$0, @*made);
+            asm OPS{~$0}.eval(~$0, @*made);
             @*made = ();
         })
         | (:s (@types) (\w+) '=' (@multiops)[' '|$]{
@@ -416,21 +424,19 @@ sub block($blockname) {
         })
         | (:s (@types) (\w+) '=' (@ops)<?{OPS{$2}.arity-1 == 0}>${
             my ($type, $name, $op) = ~<<$/;
-            my $init = Noop;
-            my $var = Var.new(:$name, :$type, :$*block, :$init);
-            (%*scope{$name} = $var).declare;
+            my $var = var($type, $name);
+            %scope{$name} = $var;
             @*made = $var;
-            put OPS{$op}.eval($op, @*made);
+            asm OPS{$op}.eval($op, @*made);
             @*made = ();
         })
         | (:s (@types) (\w+) '=' (@ops)
                 <expression>**{OPS{$2}.arity-1}%[<.ws>?','<.ws>?]${
             my ($type, $name, $op) = ~<<$/[^3];
-            my $init = Noop;
-            my $var = Var.new(:$name, :$type, :$*block, :$init);
-            (%*scope{$name} = $var).declare;
+            my $var = var($type, $name);
+            %scope{$name} = $var;
             unshift @*made, $var;
-            put OPS{$op}.eval($op, @*made);
+            asm OPS{$op}.eval($op, @*made);
             @*made = ();
         })
         | (:s (@types) (\w+) '=' <expression>${
@@ -438,14 +444,14 @@ sub block($blockname) {
             my $name = ~$1;
             my $arg = @*made.pop;
             bailout 'type mismatch' unless $arg.type eq $type;
-            my $var = Var.new(:$name, :$type, :$*block, init => $arg);
-            (%*scope{$name} = $var).declare;
+            my $var = var($type, $name, $arg);
+            %scope{$name} = $var;
         })
         | (:s (\w+) '=' <?{ lookup(~$0) ~~ Var }>(@ops)
                 <expression>**{OPS{$1}.arity-1}%[<.ws>?','<.ws>?]${
             my ($varname, $op) = ~<<$/;
             @*made.unshift(lookup($varname));
-            put OPS{$op}.eval($op, @*made);
+            asm OPS{$op}.eval($op, @*made);
             @*made = ();
         })
         | (:s (\w+) '=' <?{ lookup(~$0) ~~ Var }>(@multiops)[' '|$]{
@@ -455,7 +461,7 @@ sub block($blockname) {
             bailout "TODO $?LINE"
         })
         | (:s (@multiops) <expression>*%[<.ws>?','<.ws>?]${
-            put find_multi(~$0, argsig(@*made)).eval(~$0, @*made);
+            asm find_multi(~$0, argsig(@*made)).eval(~$0, @*made);
             @*made = ();
         })
         | (:s lex (\w+) '=' <expression>${
@@ -468,19 +474,19 @@ sub block($blockname) {
                 if %pad{$name}:exists;
 
             %pad{$name} = Lex.new(:$name, :$type, index => +%pad);
-            put "    .lex {$type} {$name}";
-            put "    bindlex *{$name} {$arg.promote.eval}";
+            asm "    .lex {$type} {$name}";
+            asm "    bindlex *{$name} {$arg.promote.eval}";
             @*made = ();
         })
         | (:s (\w+)'()'<?{ frame(~$0) ~~ Coderef }>${
-            my $tmp = Tmp.new(type => 'obj', :$*block, init => Noop);
-            $tmp.declare;
-            put "    getcode {$tmp.eval} \&{$0}";
-            put "    .call {$tmp.eval}";
+            my $tmp = tmp('obj');
+            asm "    getcode {$tmp.eval} \&{$0}";
+            asm "    .call {$tmp.eval}";
             @*made = ();
         })
         || {bailout}
-    ]/ }
+        ]/
+    }
 
     bailout 'unclosed block';
 }
@@ -536,37 +542,28 @@ class Outerref is Lexref {
     method eval { "*{$.lex.index}!{$!outer}" }
 }
 
-role Alias {
+role Local {
     has $.type;
-    has $.block;
-    has $.init;
+    has $.id;
     has $!declared;
     method longname { ... }
     method sig { uc sig $!type }
+    method promote { self }
+    method eval { "\${$.longname}" }
     method declare {
-        $!declared = True;
-        put "    .var {$.type} {$.longname}";
-        .put with $!init.init("\${$.longname}");
-    }
-    method eval {
-        self.declare unless $!declared;
-        "\${$.longname}";
+        asm "    .var {$.type} {$.longname}";
+        self;
     }
 }
 
-class Var does Alias {
+class Var does Local {
     has $.name;
-    method longname { "var{$!block.id}_{$!name}" }
-    method promote { self }
+    method longname { "v{$.id}_{$!name}" }
 }
 
-class Tmp does Alias {
-    has $.id;
-    submethod TWEAK { $!id = $!block.temps{$!type}++ }
-    method longname { "tmp{$!block.id}_{sig $.type}{$!id}" }
-    method promote { self }
+class Tmp does Local {
+    method longname { "{sig $.type}{$.id}" }
 }
-
 
 class Lex {
     has $.type;
@@ -583,9 +580,9 @@ role Value {
     method type { ... }
     method sig { sig self.type }
     method eval { ... }
-    method promote { Tmp.new(:$.type, :$*block, init => self) }
+    method promote { tmp($.type, self) }
     method init($target) {
-        "    const_{extsig $.type} {$target} {$.eval}";
+        asm "    const_{extsig $.type} {$target.eval} {$.eval}";
     }
 }
 
@@ -621,9 +618,10 @@ class Cast {
     has $.expr;
     has $.type;
     method sig { uc sig $!type }
-    method promote { Tmp.new(:$!type, :$*block, init => self) }
+    method promote { tmp($!type, self) }
     method init($target) {
-        "    coerce_{sig $!expr.type}{sig $!type} {$target} {$!expr.eval}";
+        asm "    coerce_{sig $!expr.type}{sig $!type} "
+            ~ "{$target.eval} {$!expr.eval}";
     }
 }
 
@@ -633,7 +631,7 @@ class Delex {
     method sig { uc sig $.type }
     method promote { bailout "TODO $?LINE" }
     method init($target) {
-        "    getlex {$target} {$!ref.eval}"
+        asm "    getlex {$target.eval} {$!ref.eval}"
     }
 }
 
@@ -641,23 +639,12 @@ class IBox {
     has $.expr;
     method type { 'obj' }
     method sig { 'O' }
-    method promote { Tmp.new(:type<obj>, :$*block, init => self) }
+    method promote { tmp('obj', self) }
     method init($target) {
-        "    bootint {$target}\n" ~
-        "    box_i {$target} {$!expr.promote.eval} {$target}";
+        my $eval = $target.eval;
+        asm "    bootint {$eval}";
+        asm "    box_i {$eval} {$!expr.promote.eval} {$eval}";
     }
-}
-
-sub capture-out(&block) {
-    my @out;
-    temp $*OUT = class { method print($_) { @out.push($_) } }
-    block;
-    @out.join;
-}
-
-sub ignore-out(&block) {
-    temp $*OUT = class { method print($) {} }
-    block;
 }
 
 sub as {
@@ -672,6 +659,13 @@ sub dest($_) {
     .subst(/'.tiny'?$/, '.moarvm');
 }
 
+sub capture-asm(&block) {
+    my @asm;
+    temp &asm = { @asm.push("$_\n") }
+    block;
+    @asm.join;
+}
+
 proto MAIN(|c) is export(:MAIN) {
     CATCH {
         note "$_\n" ~ .backtrace.grep(none *.is-hidden, *.is-setting)[^2].join;
@@ -681,11 +675,12 @@ proto MAIN(|c) is export(:MAIN) {
 }
 
 multi MAIN(Str $src, Bool :$parse!) {
-    ignore-out { parse $src }
+    temp &asm = -> $ {}
+    parse $src;
 }
 
 multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) {
-    as.compile_code(capture-out({ parse $src }), $dest);
+    as.compile_code(capture-asm({ parse $src }), $dest);
 }
 
 multi MAIN(Str $src, Bool :$dump!) {
@@ -693,7 +688,7 @@ multi MAIN(Str $src, Bool :$dump!) {
 }
 
 multi MAIN(Str $src, *@args, Bool :$run!) {
-    as.eval_code(capture-out({ parse $src }), |@args);
+    as.eval_code(capture-asm({ parse $src }), |@args);
 }
 
 multi MAIN(Bool :$parse-stdin!) { MAIN '-', :parse }
