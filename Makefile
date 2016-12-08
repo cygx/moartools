@@ -12,7 +12,7 @@ build: $(BYTECODE)
 $(NQPBC): %.moarvm: %.nqp
 	$(NQP) --target=mbc --output=$@ $<
 
-$(TINYBC): %.moarvm: %.tiny
+$(TINYBC): %.moarvm: %.tiny MoarTL0.pm
 	./moartl0 --compile $< $@
 
 verbose: PROVE += -v
