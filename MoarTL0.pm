@@ -231,12 +231,7 @@ sub parse($src --> Nil) {
             %unit{$name} //= Coderef.new(:$name);
             asm ".frame $name";
         })
-        | (:s lex (\w+) '{'${
-            my $name := ~$0;
-            %unit{$name} //= Coderef.new(:$name);
-            asm ".frame $name";
-            lexpad $name;
-        })
+        | (:s lex (\w+) '{'${ parse-lexpad ~$0 })
         | (:s lex (\w+) ':' (\w+)${
             my $child := ~$0;
             my $parent := ~$1;
@@ -306,11 +301,53 @@ sub is-label($name) {
     lookup($name) ~~ Block || bailout :lex, "unknown label '$name'";
 }
 
-sub lexpad($framename) {
-    my %pad := %lexpads{$framename} //= {};
+sub parse-lexpad($name) {
+    asm ".frame $name";
 
-    while ($_ := next-line) !=:= IterationEnd { /^[
+    %unit{$name} //= Coderef.new(:$name);
+    $frame = $name;
+    %temps = ();
+
+    my %pad := %lexpads{$name} //= {};
+    my %scope;
+
+    while ($_ := next-line) !=:= IterationEnd {
+        %temptops = ();
+        /^[
         | [\#|$]
+        | (:s use (\w+)${
+            my $name = ~$0;
+            bailout "local '$name' already exists"
+                if %scope{$name}:exists;
+
+            my $var = var('obj', $name);
+            %scope{$name} = $var;
+
+            my $tmpname = tmp('str', sv($name));
+            my $path = tmp('str', sv("lib/{$name}.moarvm"));
+
+            asm "    loadbytecode {$path.eval} {$path.eval}";
+            asm "    getcurhllsym {$var.eval} {$tmpname.eval}";
+        })
+        | (:s import (@types) (\w+) from (\w+)${
+            my ($type, $name, $mod) = ~<<$/;
+            bailout "'{$mod}' not declared"
+                unless %scope{$mod}:exists;
+
+            bailout "'{$name}' already declared", :lex
+                if %pad{$name}:exists;
+
+            %pad{$name} = Lex.new(:$name, :$type, index => +%pad);
+            my $modvar = %scope{$mod};
+
+            asm "    .lex $type $name";
+
+            my $tmp = tmp($type);
+            my $str = tmp('str', sv($name));
+
+            asm "    getlexrel {$tmp.eval} {$modvar.eval} {$str.eval}";
+            asm "    bindlex *{$name} {$tmp.eval}";
+        })
         | (:s (@types) (\w+)${
             my $type = ~$0;
             my $name = ~$1;
@@ -322,7 +359,8 @@ sub lexpad($framename) {
         })
         | ('}' ${ return })
         || {bailout}
-    ]/ }
+        ]/
+    }
 
     bailout 'unclosed block';
 }
@@ -358,19 +396,6 @@ sub parse-block($blockname) {
         /^[
         | [\#|$]
         | (:s '.'(\w+) '{'${ parse-block ~$0 })
-        | (:s use (\w+)${
-            my $name = ~$0;
-            bailout "local '$name' already exists"
-                if %scope{$name}:exists;
-
-            my $tmpname = tmp('str', sv($name));
-            my $path = tmp('str', sv("lib/{$name}.moarvm"));
-            my $var = var('obj', $name);
-            %scope{$name} = $var;
-
-            asm "    loadbytecode {$path.eval} {$path.eval}";
-            asm "    getcurhllsym {$var.eval} {$tmpname.eval}";
-        })
         | (:s do '{'${ parse-block "do{$doblocks++}" })
         | (:s done <expression>${
             bailout 'done outside do block' unless $*dovar;

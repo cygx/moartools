@@ -1,5 +1,6 @@
 lex import {
-    obj ArrayUInt8
+    use arrays
+    import obj ArrayUInt8 from arrays
 }
 
 lex main : import
@@ -9,16 +10,11 @@ fn main() {
     obj buf = create ArrayUInt8
     read fh, buf, 8
     close fh
-    say "ok"
+    print "ok"
     exit 0
 }
 
 fn import() {
-    use arrays
-
-    obj type = getlexrel arrays, "ArrayUInt8"
-    bindlex ArrayUInt8, type
-
     obj context = ctx
     forceouterctx main, context
     main()
