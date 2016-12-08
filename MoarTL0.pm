@@ -108,7 +108,6 @@ my @scopes = $(%unit);
 my %lexpads;
 my %lexchain;
 my $blocks;
-my $doblocks;
 my $dovar;
 my $frame;
 my $block;
@@ -372,7 +371,6 @@ sub parse-frame($name, :$load, :$main) {
 
     %unit{$name} //= Coderef.new(:$name);
     $blocks = 0;
-    $doblocks = 0;
     $frame = $name;
     $vars = 0;
     %temps = ();
@@ -396,7 +394,7 @@ sub parse-block($blockname) {
         /^[
         | [\#|$]
         | (:s '.'(\w+) '{'${ parse-block ~$0 })
-        | (:s do '{'${ parse-block "do{$doblocks++}" })
+        | (:s do '{'${ parse-block 'do' })
         | (:s done <expression>${
             bailout 'done outside do block' unless $dovar;
             asm find_multi('set', argsig($dovar, @*made[0]))
@@ -416,7 +414,7 @@ sub parse-block($blockname) {
             my $var = var($type, $name);
             %scope{$name} = $var;
             temp $dovar = $var;
-            parse-block "do{$doblocks++}";
+            parse-block 'do';
         })
         | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
