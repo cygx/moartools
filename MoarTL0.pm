@@ -109,6 +109,7 @@ my %lexpads;
 my %lexchain;
 my $blocks;
 my $doblocks;
+my $dovar;
 my $frame;
 my $block;
 my $vars;
@@ -218,11 +219,11 @@ sub parse-frame { ... }
 sub parse-block($name) { ... }
 sub parse-lexpad($name) { ... }
 
-sub parse($src --> Nil) {
+sub parse(Iterable $src --> Nil) {
     asm ".hll tiny";
 
     $n = 0;
-    $lines := $src.IO.lines(:close).iterator();
+    $lines := $src.iterator;
 
     while ($_ := next-line) !=:= IterationEnd { /^[
         | [\#|$]
@@ -398,9 +399,9 @@ sub parse-block($blockname) {
         | (:s '.'(\w+) '{'${ parse-block ~$0 })
         | (:s do '{'${ parse-block "do{$doblocks++}" })
         | (:s done <expression>${
-            bailout 'done outside do block' unless $*dovar;
-            asm find_multi('set', argsig($*dovar, @*made[0]))
-                .eval('set', $*dovar, @*made[0]);
+            bailout 'done outside do block' unless $dovar;
+            asm find_multi('set', argsig($dovar, @*made[0]))
+                .eval('set', $dovar, @*made[0]);
             @*made = ();
         })
         | ('}' ${
@@ -415,7 +416,7 @@ sub parse-block($blockname) {
             my ($type, $name) = ~<<$/;
             my $var = var($type, $name);
             %scope{$name} = $var;
-            my $*dovar = $var;
+            temp $dovar = $var;
             parse-block "do{$doblocks++}";
         })
         | (:s (int) (\w+) '=' (\d+)${
@@ -691,7 +692,9 @@ sub capture-asm(&block) {
     @asm.join;
 }
 
-proto MAIN(|c) is export(:MAIN) {
+sub iter($_) { .IO.lines(:close) }
+
+proto MAIN(|) is export(:MAIN) {
     CATCH {
         note "$_\n" ~ .backtrace.grep(none *.is-hidden, *.is-setting)[^2].join;
         exit 1;
@@ -701,19 +704,19 @@ proto MAIN(|c) is export(:MAIN) {
 
 multi MAIN(Str $src, Bool :$parse!) {
     temp &asm = -> $ {}
-    parse $src;
+    parse iter($src);
 }
 
 multi MAIN(Str $src, Str $dest = dest($src), Bool :$compile!) {
-    as.compile_code(capture-asm({ parse $src }), $dest);
+    as.compile_code(capture-asm({ parse iter($src) }), $dest);
 }
 
 multi MAIN(Str $src, Bool :$dump!) {
-    parse $src;
+    parse iter($src);
 }
 
 multi MAIN(Str $src, *@args, Bool :$run!) {
-    as.eval_code(capture-asm({ parse $src }), |@args);
+    as.eval_code(capture-asm({ parse iter($src) }), |@args);
 }
 
 multi MAIN(Bool :$parse-stdin!) { MAIN '-', :parse }
