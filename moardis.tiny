@@ -5,12 +5,10 @@ lex import {
 lex main : import
 
 fn main() {
-    obj BUF = obj(ArrayUInt8)
     obj fh = open "lib/primitives.moarvm", "r"
-    obj buf = create BUF
+    obj buf = create ArrayUInt8
     read fh, buf, 8
     close fh
-
     say "ok"
     exit 0
 }
@@ -18,11 +16,10 @@ fn main() {
 fn import() {
     use arrays
 
-    obj ARRAY_U8 = getlexrel arrays, "ArrayUInt8"
-    bindlex ArrayUInt8, ARRAY_U8
+    obj type = getlexrel arrays, "ArrayUInt8"
+    bindlex ArrayUInt8, type
 
-    obj mainfn = getcode main
     obj context = ctx
-    forceouterctx mainfn, context
+    forceouterctx main, context
     main()
 }

@@ -153,6 +153,7 @@ class Noop { ... }
 class Cast { ... }
 class Delex { ... }
 class IBox { ... }
+class CodeBox { ... }
 
 sub tmp($type, $init = Noop) {
     my $id = %temptops{$type}++;
@@ -263,13 +264,6 @@ sub cast($expr, $type) { Cast.new(:$expr, :$type) }
 sub objectify($expr) {
     given $expr.type {
         when 'int' { IBox.new(:$expr) }
-        when 'lexref' {
-            my $type = $expr.lex.type;
-            bailout "lexref has type '$type'"
-                unless $type eq 'obj';
-
-            Delex.new(ref => $expr);
-        }
         default { bailout "cannot objectify '$_'" }
     }
 }
@@ -529,12 +523,14 @@ class Coderef {
     has $.name;
     method type { 'coderef' }
     method eval { "\&{$!name}" }
+    method promote { tmp 'obj', CodeBox.new(ref => self) }
 }
 
 class Lexref {
     has $.lex;
     method type { 'lexref' }
     method eval { "*{$!lex.name}" }
+    method promote { tmp $!lex.type, Delex.new(ref => self) }
 }
 
 class Outerref is Lexref {
@@ -629,10 +625,14 @@ class Delex {
     has $.ref;
     method type { $!ref.lex.type }
     method sig { uc sig $.type }
-    method promote { bailout "TODO $?LINE" }
-    method init($target) {
-        asm "    getlex {$target.eval} {$!ref.eval}"
-    }
+    method init($target) { asm "    getlex {$target.eval} {$!ref.eval}" }
+}
+
+class CodeBox {
+    has $.ref;
+    method type { 'obj' }
+    method sig { 'O' }
+    method init($target) { asm "    getcode {$target.eval} {$!ref.eval}" }
 }
 
 class IBox {
