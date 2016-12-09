@@ -391,7 +391,7 @@ class MoarAS::Frame {
 
 class MoarAS::Compiler {
     method new() {
-        nqp::die('MAST::Compiler cannot be instantiated');
+        nqp::die('MoarAS::Compiler cannot be instantiated');
     }
 
     method parse(&lines) {
