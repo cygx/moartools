@@ -35,7 +35,7 @@ my %flagmap := nqp::hash(
 
 sub bailout($msg = '?') {
     nqp::closefh($*fh) if nqp::defined($*fh);
-    nqp::die("panic: $msg\n[$*n] $*line");
+    nqp::die("panic: $msg\n[{$*parser.n}] {$*parser.line}");
 }
 
 sub trim(str $str) {
@@ -49,16 +49,6 @@ sub trim(str $str) {
     nqp::islt_i($pos, $left)
         ?? ''
         !! nqp::substr($str, $left, $pos + 1 - $left);
-}
-
-sub frame($uid) {
-    nqp::existskey(%*frames, $uid)
-        ?? %*frames{$uid}
-        !! (%*frames{$uid} := MoarAS::Frame.new($uid));
-}
-
-sub theframe() {
-    $*frame // bailout('no frame');
 }
 
 grammar MoarAS::Grammar {
@@ -122,7 +112,58 @@ grammar MoarAS::Grammar {
     token TOP { '#' || <statement>? $ || {bailout()} }
 }
 
-class MoarAS::Actions {
+class MoarAS::Parser {
+    has $!line;
+    has $!n;
+    has $!cu;
+    has $!cuuid;
+    has %!frames;
+    has $!frame;
+    has @!flags;
+    has $!result;
+
+    method new() {
+        my $parser := nqp::create(MoarAS::Parser);
+        $parser.BUILD;
+        $parser;
+    }
+
+    method BUILD() {
+        $!n := 0;
+        $!cu := MAST::CompUnit.new;
+        $!cuuid := 0;
+        %!frames := {};
+        @!flags := [];
+        $!result := MAST::Node;
+    }
+
+    method line() { $!line }
+    method n() { $!n }
+    method cu() { $!cu }
+    method frame() { $!frame // bailout('no frame') }
+
+    method call_flags() { @!flags }
+    method call_result() { $!result }
+    method call_reset() {
+        @!flags := [];
+        $!result := MAST::Node;
+    }
+
+    method next-line($line) {
+        if nqp::defined($line) {
+            $!line := trim($line);
+            $!n := $!n + 1;
+            1;
+        }
+        else { 0 }
+    }
+
+    method get_frame($uid) {
+        nqp::existskey(%!frames, $uid)
+            ?? %!frames{$uid}
+            !! (%!frames{$uid} := MoarAS::Frame.new($uid));
+    }
+
     method name($/) {}
     method type($/) {}
 
@@ -130,7 +171,7 @@ class MoarAS::Actions {
     method ident:sym<str>($/) { make ~$/[0] }
 
     method varexpr:sym<local>($/) { make MAST::Local.new(index => +~$/[0]) }
-    method varexpr:sym<alias>($/) { make theframe().dealias(~$<name>) }
+    method varexpr:sym<alias>($/) { make self.frame.dealias(~$<name>) }
 
     method constexpr:sym<str>($/) { make MAST::SVal.new(value => ~$/[0]) }
     method constexpr:sym<cstr>($/) { make MAST::SVal.new(value => ~$<name>) }
@@ -138,11 +179,11 @@ class MoarAS::Actions {
     method constexpr:sym<int>($/) { make MAST::IVal.new(value => +~$/) }
     method constexpr:sym<uint>($/) { make MAST::IVal.new(value => +~$/, signed => 0) }
 
-    method refexpr:sym<lexical>($/) { make theframe().lexical($<ident>.made) }
-    method refexpr:sym<farlex>($/) { make theframe().rawlex(+~$/[0], +~$/[1]) }
-    method refexpr:sym<rawlex>($/) { make theframe().rawlex(+~$/[0]) }
-    method refexpr:sym<label>($/) { make theframe().label(~$<name>) }
-    method refexpr:sym<code>($/) { make frame($<ident>.made).node }
+    method refexpr:sym<lexical>($/) { make self.frame.lexical($<ident>.made) }
+    method refexpr:sym<farlex>($/) { make self.frame.rawlex(+~$/[0], +~$/[1]) }
+    method refexpr:sym<rawlex>($/) { make self.frame.rawlex(+~$/[0]) }
+    method refexpr:sym<label>($/) { make self.frame.label(~$<name>) }
+    method refexpr:sym<code>($/) { make self.get_frame($<ident>.made).node }
 
     method expr:<var>($/) { make $<varexpr>.made }
     method expr:<const>($/) { make $<constexpr>.made }
@@ -150,91 +191,93 @@ class MoarAS::Actions {
 
     method opname($/) {}
 
-    method statement:sym<hll>($/) { $*cu.hll($<ident>.made) }
-    method statement:sym<set_main>($/) { $*cu.main_frame(theframe().node) }
-    method statement:sym<set_load>($/) { $*cu.load_frame(theframe().node) }
+    method statement:sym<hll>($/) { $!cu.hll($<ident>.made) }
+    method statement:sym<set_main>($/) { $!cu.main_frame(self.frame.node) }
+    method statement:sym<set_load>($/) { $!cu.load_frame(self.frame.node) }
     method statement:sym<frame2>($/) {
         my $uid := $<ident>[0].made;
         my $name := $<ident>[1].made;
         bailout("frame $uid already exists")
-            if nqp::existskey(%*frames, $uid);
-        $*frame := frame($uid).init($name);
+            if nqp::existskey(%!frames, $uid);
+        $!frame := self.get_frame($uid).init($name);
     }
     method statement:sym<frame1>($/) {
         my $uid := $<ident>.made;
-        $*frame := frame($uid);
-        $*frame.init("frame_$uid") unless $*frame.initialized;
+        $!frame := self.get_frame($uid);
+        $!frame.init("frame_$uid") unless $!frame.initialized;
     }
-    method statement:sym<frame0>($/) { $*frame := MoarAS::Frame.new.init }
-    method statement:sym<locals>($/) { theframe().add_local(~$_) for $<type> }
+    method statement:sym<frame0>($/) {
+        $!frame := MoarAS::Frame.new($!cuuid++).init;
+    }
+    method statement:sym<locals>($/) { self.frame.add_local(~$_) for $<type> }
     method statement:sym<local2>($/) {
         my $type := ~$<type>;
-        my $local := theframe().add_local($type);
+        my $local := self.frame.add_local($type);
         my $init := $<constexpr>.made;
         my $suffix := %extsuffix{$type};
         my $op := "const_$suffix";
-        $*frame.add_op($op, $local, $init);
+        $!frame.add_op($op, $local, $init);
     }
-    method statement:sym<local1>($/) { theframe().add_local(~$<type>) }
+    method statement:sym<local1>($/) { self.frame.add_local(~$<type>) }
     method statement:sym<aliases>($/) {
         my $i := 0;
-        theframe().add_alias(~$_, $i++) for $<name>;
+        self.frame.add_alias(~$_, $i++) for $<name>;
     }
-    method statement:sym<alias>($/) { theframe().add_alias(~$<name>, +~$/[0]) }
+    method statement:sym<alias>($/) { self.frame.add_alias(~$<name>, +~$/[0]) }
     method statement:sym<var3>($/) {
         my $type := ~$<type>;
         my $name := ~$<name>;
-        my $local := theframe().add_local($type);
+        my $local := self.frame.add_local($type);
         my $init := $<constexpr>.made;
         my $suffix := %extsuffix{$type};
         my $op := "const_$suffix";
-        $*frame.add_alias($name, $local.index);
-        $*frame.add_op($op, $local, $init);
+        $!frame.add_alias($name, $local.index);
+        $!frame.add_op($op, $local, $init);
     }
     method statement:sym<var2>($/) {
         my $type := ~$<type>;
         my $name := ~$<name>;
-        my $local := theframe().add_local($type);
-        $*frame.add_alias($name, $local.index);
+        my $local := self.frame.add_local($type);
+        $!frame.add_alias($name, $local.index);
     }
     method statement:sym<lex3>($/) {
         my $type := ~$<type>;
         my $name := $<ident>.made;
-        my $lexical := theframe().add_lexical($type, $name);
+        my $lexical := self.frame.add_lexical($type, $name);
         my $init := $<varexpr>.made;
-        $*frame.add_op('bindlex', $lexical, $init);
+        $!frame.add_op('bindlex', $lexical, $init);
     }
-    method statement:sym<lex2>($/) { theframe().add_lexical(~$<type>, $<ident>.made) }
-    method statement:sym<label>($/) { theframe().add_label(~$<name>) }
+    method statement:sym<lex2>($/) { self.frame.add_lexical(~$<type>, $<ident>.made) }
+    method statement:sym<label>($/) { self.frame.add_label(~$<name>) }
     method statement:sym<param>($/) {
         my $type := ~$<type>;
         my $name := ~$<name>;
         my $index := $<constexpr>.made;
-        my $local := theframe().add_local($type);
-        $*frame.add_alias($name, $local.index);
-        $*frame.add_op("param_rp_{%suffix{$type}}", $local, $index);
+        my $local := self.frame.add_local($type);
+        $!frame.add_alias($name, $local.index);
+        $!frame.add_op("param_rp_{%suffix{$type}}", $local, $index);
     }
     method statement:sym<flags>($/) {
         for $/[0] {
             my $flag := ~$_;
             bailout('illegal flag')
                 unless nqp::existskey(%flagmap, $flag);
-            nqp::push(@*flags, %flagmap{$flag});
+            nqp::push(@!flags, %flagmap{$flag});
         }
     }
-    method statement:sym<result>($/) { $*result := $<varexpr>.made }
+    method statement:sym<result>($/) { $!result := $<varexpr>.made }
     method statement:sym<call_>($/) {
         my @args;
         nqp::push(@args, $_.made) for $<expr>;
-        theframe().add_call($<varexpr>.made, |@args);
+        self.frame.add_call($<varexpr>.made, |@args);
     }
-    method statement:sym<call1>($/) { theframe().add_call($<varexpr>.made) }
+    method statement:sym<call1>($/) { self.frame.add_call($<varexpr>.made) }
     method statement:sym<op_>($/) {
         my @args;
         nqp::push(@args, $_.made) for $<expr>;
-        theframe().add_op(~$<opname>, |@args);
+        self.frame.add_op(~$<opname>, |@args);
     }
-    method statement:sym<op0>($/) { theframe().add_op(~$<opname>) }
+    method statement:sym<op0>($/) { self.frame.add_op(~$<opname>) }
 
     method TOP($/) {}
 }
@@ -246,7 +289,7 @@ class MoarAS::Frame {
     has %!lexicals;
     has %!labels;
 
-    method new($uid = $*cuuid++) {
+    method new($uid) {
         my $frame := nqp::create(MoarAS::Frame);
         $frame.BUILD($uid);
         $frame;
@@ -268,7 +311,7 @@ class MoarAS::Frame {
             if self.initialized;
 
         $!node := MAST::Frame.new(:$name, cuuid => $!uid);
-        $*cu.add_frame($!node);
+        $*parser.cu.add_frame($!node);
         self;
     }
 
@@ -333,36 +376,28 @@ class MoarAS::Frame {
     }
 
     method add_call($target, *@args) {
-        my $call := MAST::Call.new(:$target, :@*flags, :$*result, |@args);
+        my @flags := $*parser.call_flags;
+        my $result := $*parser.call_result;
+
+        my $call := MAST::Call.new(:$target, :@flags, :$result, |@args);
         nqp::push($!node.instructions, $call);
 
-        @*flags := [];
-        $*result := MAST::Node;
-
+        $*parser.call_reset;
         $call;
     }
 }
 
 class MoarAS::Compiler {
+    method new() {
+        nqp::die('MAST::Compiler cannot be instantiated');
+    }
+
     method parse(&lines) {
-        my $*n := 0;
-        my $*line;
+        my $*parser := MoarAS::Parser.new;
+        MoarAS::Grammar.parse($*parser.line, actions => $*parser)
+            while $*parser.next-line(lines());
 
-        my $*cu := MAST::CompUnit.new;
-        my $*cuuid := 0;
-        my %*frames;
-        my $*frame;
-
-        my @*flags;
-        my $*result := MAST::Node;
-
-        while nqp::defined($*line := lines()) {
-            $*n := $*n + 1;
-            $*line := trim($*line);
-            MoarAS::Grammar.parse($*line, actions => MoarAS::Actions);
-        }
-
-        $*cu;
+        $*parser.cu;
     }
 
     method parse_code($code) {
