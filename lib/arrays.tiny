@@ -20,62 +20,63 @@ ld load() {
     obj subinfo = create BH
     bindkey info, "array", subinfo
 
+    obj exports = create BH
+
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", Int8
         composetype type, info
-        lex ArrayInt8 = type
+        bindkey exports, "ArrayInt8", type
     }
 
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", Int16
         composetype type, info
-        lex ArrayInt16 = type
+        bindkey exports, "ArrayInt16", type
     }
 
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", Int32
         composetype type, info
-        lex ArrayInt32 = type
+        bindkey exports, "ArrayInt32", type
     }
 
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", Int64
         composetype type, info
-        lex ArrayInt64 = type
+        bindkey exports, "ArrayInt64", type
     }
 
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", UInt8
         composetype type, info
-        lex ArrayUInt8 = type
+        bindkey exports, "ArrayUInt8", type
     }
 
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", UInt16
         composetype type, info
-        lex ArrayUInt16 = type
+        bindkey exports, "ArrayUInt16", type
     }
 
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", UInt32
         composetype type, info
-        lex ArrayUInt32 = type
+        bindkey exports, "ArrayUInt32", type
     }
 
     do {
         obj type = newtype NULL, "VMArray"
         bindkey subinfo, "type", UInt64
         composetype type, info
-        lex ArrayUInt64 = type
+        bindkey exports, "ArrayUInt64", type
     }
 
-    obj context = ctx
-    bindcurhllsym "arrays", context
+    bindcurhllsym "arrays", exports
 }

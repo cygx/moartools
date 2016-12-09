@@ -350,8 +350,15 @@ sub parse-lexpad($name) {
 
             my $tmp = tmp($type);
             my $str = tmp('str', sv($name));
-
-            asm "    getlexrel {$tmp.eval} {$modvar.eval} {$str.eval}";
+            given $type {
+                when 'obj' {
+                    asm "    atkey_o {$tmp.eval} {$modvar.eval} {$str.eval}";
+                }
+                default {
+                    # TODO: unbox primitive
+                    bailout "TODO $?FILE"
+                }
+            }
             asm "    bindlex *{$name} {$tmp.eval}";
         })
         | (:s (@types) (\w+)${

@@ -6,50 +6,51 @@ ld load() {
     obj subinfo = create BH
     bindkey info, "integer", subinfo
 
-    obj INT8 = newtype NULL, "P6int"
+    obj Int8 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(8)
-    composetype INT8, info
+    composetype Int8, info
 
-    obj INT16 = newtype NULL, "P6int"
+    obj Int16 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(16)
-    composetype INT16, info
+    composetype Int16, info
 
-    obj INT32 = newtype NULL, "P6int"
+    obj Int32 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(32)
-    composetype INT32, info
+    composetype Int32, info
 
-    obj INT64 = newtype NULL, "P6int"
+    obj Int64 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(64)
-    composetype INT64, info
+    composetype Int64, info
 
     bindkey subinfo, "unsigned", obj(1)
 
-    obj UINT8 = newtype NULL, "P6int"
+    obj UInt8 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(8)
-    composetype UINT8, info
+    composetype UInt8, info
 
-    obj UINT16 = newtype NULL, "P6int"
+    obj UInt16 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(16)
-    composetype UINT16, info
+    composetype UInt16, info
 
-    obj UINT32 = newtype NULL, "P6int"
+    obj UInt32 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(32)
-    composetype UINT32, info
+    composetype UInt32, info
 
-    obj UINT64 = newtype NULL, "P6int"
+    obj UInt64 = newtype NULL, "P6int"
     bindkey subinfo, "bits", obj(64)
-    composetype UINT64, info
+    composetype UInt64, info
 
-    lex Int8  = INT8
-    lex Int16 = INT16
-    lex Int32 = INT32
-    lex Int64 = INT64
+    obj exports = create BH
 
-    lex UInt8  = UINT8
-    lex UInt16 = UINT16
-    lex UInt32 = UINT32
-    lex UInt64 = UINT64
+    bindkey exports, "Int8",  Int8
+    bindkey exports, "Int16", Int16
+    bindkey exports, "Int32", Int32
+    bindkey exports, "Int64", Int64
 
-    obj context = ctx
-    bindcurhllsym "primitives", context
+    bindkey exports, "UInt8",  UInt8
+    bindkey exports, "UInt16", UInt16
+    bindkey exports, "UInt32", UInt32
+    bindkey exports, "UInt64", UInt64
+
+    bindcurhllsym "primitives", exports
 }
