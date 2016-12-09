@@ -1,6 +1,8 @@
 # Copyright 2016 cygx <cygx@cpan.org>
 # Distributed under the Boost Software License, Version 1.0
 
+# TODO: remove last uses of $*parser that break encapsulation
+
 my $assembler := nqp::getcomp('MAST');
 
 my %types := nqp::hash(
