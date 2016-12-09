@@ -1,0 +1,11 @@
+fn main() {
+    obj stdin = getstdin
+    do {
+        str line = readline stdin
+        int len = chars line
+        done unless len
+        print line
+        redo
+    }
+    exit 0
+}
