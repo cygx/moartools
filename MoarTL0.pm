@@ -26,6 +26,8 @@ my \OPS = {
     getcode         => op(<O &>),
     getcurhllsym    => op(<O S>),
     getlexrel       => op(<O O S>),
+    getstdin        => op(<O>),
+    getstdout       => op(<O>),
     newtype         => op(<O O S>),
     open            => op(<O S S>, :suffix<fh>),
     print           => op(<S>),
@@ -108,6 +110,7 @@ my @scopes = $(%unit);
 my %lexpads;
 my %lexchain;
 my $blocks;
+my $doblock;
 my $dovar;
 my $frame;
 my $block;
@@ -154,6 +157,10 @@ class Cast { ... }
 class Delex { ... }
 class IBox { ... }
 class CodeBox { ... }
+
+sub doblock {
+    $doblock // bailout('not inside a do block');
+}
 
 sub tmp($type, $init = Noop) {
     my $id = %temptops{$type}++;
@@ -379,9 +386,11 @@ sub parse-frame($name, :$load, :$main) {
     parse-block $name;
 }
 
-sub parse-block($blockname) {
+sub parse-block($blockname, :$do) {
     my %scope;
     temp $block = Block.new(name => $blockname, id => $blocks++);
+    temp $doblock = $block if $do;
+    temp $dovar = $do if $do;
     %scope{$blockname} = $block;
     @scopes.unshift(%scope);
     LEAVE @scopes.shift;
@@ -394,11 +403,11 @@ sub parse-block($blockname) {
         /^[
         | [\#|$]
         | (:s '.'(\w+) '{'${ parse-block ~$0 })
-        | (:s do '{'${ parse-block 'do' })
-        | (:s done <expression>${
-            bailout 'done outside do block' unless $dovar;
+        | (:s do '{'${ parse-block 'do', :do })
+        | (:s done <?{ $dovar ~~ Var }><expression>${
             asm find_multi('set', argsig($dovar, @*made[0]))
                 .eval('set', $dovar, @*made[0]);
+            asm "    goto \@{doblock.ket}";
             @*made = ();
         })
         | ('}' ${
@@ -413,8 +422,7 @@ sub parse-block($blockname) {
             my ($type, $name) = ~<<$/;
             my $var = var($type, $name);
             %scope{$name} = $var;
-            temp $dovar = $var;
-            parse-block 'do';
+            parse-block 'do', do => $var;
         })
         | (:s (int) (\w+) '=' (\d+)${
             my ($type, $name, $value) = $/>>.Str;
@@ -431,6 +439,13 @@ sub parse-block($blockname) {
         | (:s break (\w+) {is-label ~$0} unless <expression>${
             asm "    unless_i {@*made[0].eval} \@{lookup(~$0).ket}";
             @*made = ();
+        })
+        | (:s done <?{ $dovar !~~ Var }>unless <expression>${
+            asm "    unless_i {@*made[0].eval} \@{doblock.ket}";
+            @*made = ();
+        })
+        | (:s redo${
+            asm "    goto \@{doblock.bra}";
         })
         | (:s (@ops) <expression>**{OPS{$0}.arity}%[<.ws>?','<.ws>?]${
             asm OPS{~$0}.eval(~$0, @*made);
