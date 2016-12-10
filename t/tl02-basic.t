@@ -8,8 +8,9 @@ use t::run;
 my @scripts =
     't/loop.tiny' => '54321',
     't/do.tiny' => 'ok',
-    't/box.tiny' => '42';
+    't/box.tiny' => '42',
+    't/call.tiny' => 'ok';
 
 plan +@scripts;
-is ~run6(<moartl0 -r>, .key), .value, .key
+is ~run6(<moartl0 -r>, .key, :no-err), .value, .key
     for @scripts;

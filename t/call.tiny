@@ -1,0 +1,11 @@
+fn main
+
+fn callee(str s) {
+    print s
+}
+
+fn main() {
+    str ok = "ok"
+    callee(ok)
+    exit 0
+}
