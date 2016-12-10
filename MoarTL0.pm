@@ -252,6 +252,10 @@ sub parse(Iterable $src --> Nil) {
         })
         | (:s ld (\w+)'()' '{'${ parse-frame ~$0, :load })
         | (:s fn (\w+)'()' '{'${ parse-frame ~$0 })
+        | (:s fn (\w+)'('(@types) (\w+)')' '{'${
+            my @args = ~$2 => ~$1;
+            parse-frame ~$0, @args;
+        })
         || {bailout}
     ]/ }
 
@@ -378,7 +382,7 @@ sub parse-lexpad($name) {
     bailout 'unclosed block';
 }
 
-sub parse-frame($name, :$load, :$main) {
+sub parse-frame($name, *@paras, :$load, :$main) {
     asm ".frame $name";
     asm '.set load' if $load;
     asm '.set main' if $main;
@@ -390,17 +394,31 @@ sub parse-frame($name, :$load, :$main) {
     %temps = ();
     %temptops = ();
 
+    my %scope;
+    @scopes.unshift(%scope);
+    LEAVE @scopes.shift;
+
+    asm "    checkarity {+@paras} {+@paras}"
+        if @paras;
+
+    for @paras.kv -> $i, $_ {
+        my $para = var(.value, .key);
+        %scope{.key} = $para;
+        asm "    param_rp_{sig $para.type} {$para.eval} {$i}";
+    }
+
     parse-block $name;
 }
 
 sub parse-block($blockname, :$do) {
     my %scope;
+    @scopes.unshift(%scope);
+    LEAVE @scopes.shift;
+
     temp $block = Block.new(name => $blockname, id => $blocks++);
     temp $doblock = $block if $do;
     temp $dovar = $do if $do;
     %scope{$blockname} = $block;
-    @scopes.unshift(%scope);
-    LEAVE @scopes.shift;
 
     asm ".label {$block.bra}";
 
@@ -521,6 +539,14 @@ sub parse-block($blockname, :$do) {
             my $tmp = tmp('obj');
             asm "    getcode {$tmp.eval} \&{$0}";
             asm "    .call {$tmp.eval}";
+            @*made = ();
+        })
+        | (:s (\w+)'('<?{ frame(~$0) ~~ Coderef }><expression>')'${
+            my $tmp = tmp('obj');
+            my $arg = @*made[0];
+            asm "    getcode {$tmp.eval} \&{$0}";
+            asm "    .flags {$arg.type}";
+            asm "    .call {$tmp.eval} {$arg.promote.eval}";
             @*made = ();
         })
         || {bailout}
@@ -723,7 +749,7 @@ sub capture-asm(&block) {
 
 proto MAIN(|) is export(:MAIN) {
     CATCH {
-        note "$_\n" ~ .backtrace.grep(none *.is-hidden, *.is-setting)[^2].join;
+        note "$_\n" ~ .backtrace.grep(none *.is-hidden, *.is-setting)[0];
         exit 1;
     }
 
