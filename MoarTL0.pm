@@ -539,19 +539,19 @@ class Op {
     method pair { $.parsig => self }
     method parsig { @!signature.join }
     method eval($op, *@args) {
-        # FIXME: promote first, copy dummy second
         my @sigs = @!signature;
-        if $!dummy {
-            @args.splice($!dummy.key, 0, @args[$!dummy.value]);
-            @sigs.splice($!dummy.key, 0, @sigs[$!dummy.value]);
-        }
-        "    {$op}{$.suffix}" ~ join '', @args.kv.map: -> $i, $arg {
-            ' ' ~ do given @sigs[$i] {
+        my @evals = @args.kv.map: -> $i, $arg {
+            given @sigs[$i] {
                 when any <i s o & *> { $arg.eval }
                 when any <I S O> { $arg.promote.eval }
                 default { die "panic: unexpected parameter sig '$_'" }
             }
         }
+
+        @evals.splice($!dummy.key, 0, @evals[$!dummy.value])
+            if $!dummy;
+
+        "    {$op}{$.suffix} " ~ @evals.join(' ');
     }
 }
 
