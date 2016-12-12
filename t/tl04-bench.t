@@ -32,7 +32,7 @@ unless $parse_lines_tiny {
 print '  generating input...';
 my $input := do {
     my $lines := nqp::list();
-    nqp::push($lines, "$_\t42\n") for ^N;
+    nqp::push($lines, "$_\tword $_\n") for ^N;
     nqp::join('', $lines);
 }
 print "done.\n";

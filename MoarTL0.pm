@@ -30,6 +30,7 @@ my \OPS = {
     index           => op(<I S S I>, :suffix<s>),
     newtype         => op(<O O S>),
     open            => op(<O S S>, :suffix<fh>),
+    osrpoint        => op(),
     print           => op(<S>),
     readline        => op(<S O>, :suffix<fh>),
     reprname        => op(<S O>),
