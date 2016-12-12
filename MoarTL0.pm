@@ -20,7 +20,6 @@ my \OPS = {
     close           => op(<O>, :suffix<fh>),
     create          => op(<O O>),
     ctx             => op(<O>),
-    dec             => op(<I>, :suffix<i>),
     exit            => op(<I>),
     forceouterctx   => op(<O O>),
     getcode         => op(<O &>),
@@ -28,15 +27,20 @@ my \OPS = {
     getlexrel       => op(<O O S>),
     getstdin        => op(<O>),
     getstdout       => op(<O>),
+    index           => op(<I S S I>, :suffix<s>),
     newtype         => op(<O O S>),
     open            => op(<O S S>, :suffix<fh>),
     print           => op(<S>),
     readline        => op(<S O>, :suffix<fh>),
     reprname        => op(<S O>),
     say             => op(<S>),
+    substr          => op(<S S I I>, :suffix<s>),
 }
 
 my \MULTIOPS = {
+    add => %(
+        op(<I I I>, :suffix<i>).pair,
+    ),
     atkey => %(
         op(<I O S>, :suffix<i>).pair,
         op(<N O S>, :suffix<n>).pair,
@@ -63,15 +67,24 @@ my \MULTIOPS = {
         op(<O O O>).pair,
         op(<O O>, :dummy(+0 => 0)).pair,
     ),
+    dec => %(
+        op(<I>, :suffix<i>).pair,
+    ),
     getlex => %(
         op(<I s>, :suffix<ni>).pair,
         op(<N s>, :suffix<nn>).pair,
         op(<S s>, :suffix<ns>).pair,
         op(<O s>, :suffix<no>).pair,
     ),
+    inc => %(
+        op(<I>, :suffix<i>).pair,
+    ),
     loadbytecode => %(
         op(<S S>).pair,
         op(<S>, :dummy(+0 => 0)).pair,
+    ),
+    lt => %(
+        op(<I I I>, :suffix<i>).pair,
     ),
     read => %(
         op(<O O I>, :suffix<fhb>).pair,
@@ -89,6 +102,9 @@ my \MULTIOPS = {
         op(<N N>).pair,
         op(<S S>).pair,
         op(<O O>).pair,
+    ),
+    sub => %(
+        op(<I I I>, :suffix<i>).pair,
     ),
     unbox => %(
         op(<I O>, :suffix<i>).pair,
@@ -156,6 +172,7 @@ class Noop { ... }
 class Cast { ... }
 class Delex { ... }
 class IBox { ... }
+class SBox { ... }
 class CodeBox { ... }
 
 sub doblock {
@@ -270,6 +287,7 @@ sub cast($expr, $type) { Cast.new(:$expr, :$type) }
 sub objectify($expr) {
     given $expr.type {
         when 'int' { IBox.new(:$expr) }
+        when 'str' { SBox.new(:$expr) }
         default { bailout "cannot objectify '$_'" }
     }
 }
@@ -304,7 +322,7 @@ my token expression {
     | ((str) '(' <&subexpression> ')' { push @*made, cast(@*made.pop, ~$0) })
     | ((obj) '(' <&subexpression> ')' { push @*made, objectify(@*made.pop) })
     | <&subexpression>
-    || { bailout 'failed to parse arguments' }
+    || { bailout 'failed to parse expression' }
 }
 
 sub is-label($name) {
@@ -476,10 +494,18 @@ sub parse-block($blockname, :$do) {
             asm OPS{~$0}.eval(~$0, @*made);
             @*made = ();
         })
-        | (:s (@types) (\w+) '=' (@multiops)[' '|$]{
-            bailout 'cannot initialize multi-ops for now';
+        | (:s (@types) (\w+) '=' (@multiops) <expression>+%[<.ws>?','<.ws>?]${
+            my ($type, $name, $op) = ~<<$/;
+            my $var = var($type, $name);
+            %scope{$name} = $var;
+            @*made.unshift($var);
+            asm find_multi($op, multisig(@*made)).eval($op, @*made);
+            @*made = ();
         })
-        | (:s (@types) (\w+) '=' (@ops)<?{OPS{$2}.arity-1 == 0}>${
+        | (:s (@types) (\w+) '=' (@multiops)${
+            bailout "TODO $?LINE";
+        })
+        | (:s (@types) (\w+) '=' (@ops)<?{OPS{$2}.arity - 1 == 0}>${
             my ($type, $name, $op) = ~<<$/;
             my $var = var($type, $name);
             %scope{$name} = $var;
@@ -725,6 +751,19 @@ class IBox {
         my $eval = $target.eval;
         asm "    bootint {$eval}";
         asm "    box_i {$eval} {$!expr.promote.eval} {$eval}";
+    }
+}
+
+class SBox {
+    has $.expr;
+    method type { 'obj' }
+    method sig { 'O' }
+    method multisig { 'O' }
+    method promote { tmp('obj', self) }
+    method init($target) {
+        my $eval = $target.eval;
+        asm "    bootstr {$eval}";
+        asm "    box_s {$eval} {$!expr.promote.eval} {$eval}";
     }
 }
 

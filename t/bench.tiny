@@ -1,0 +1,37 @@
+fn parse_lines(str input) {
+    str TAB = "\09"
+    str NL = "\0A"
+    int ONE = 1
+    obj BH = boothash
+
+    int pos
+    int len = chars input
+    int sep
+    int nl
+
+    obj words = create BH
+    do {
+        int more = lt pos, len
+        done unless more
+
+        sep = index input, TAB, pos
+        nl = index input, NL, sep
+
+        int keylen = sub sep, pos
+        inc sep
+        int vallen = sub nl, sep
+
+        str key = substr input, pos, keylen
+        str val = substr input, sep, vallen
+        bindkey words, key, obj(val)
+
+        add pos, nl, ONE
+        redo
+    }
+
+    return words
+}
+
+ld load() {
+    bindcurhllsym "parse_lines", parse_lines
+}

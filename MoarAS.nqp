@@ -53,6 +53,10 @@ sub trim(str $str) {
         !! nqp::substr($str, $left, $pos + 1 - $left);
 }
 
+sub to_char($/) {
+    nqp::chr(nqp::radix(16, ~$/[0], 0, 0)[0]);
+}
+
 grammar MoarAS::Grammar {
     token name { <[\w]-[\d]> \w* }
     token type { int | num | str | obj }
@@ -175,7 +179,10 @@ class MoarAS::Parser {
     method varexpr:sym<local>($/) { make MAST::Local.new(index => +~$/[0]) }
     method varexpr:sym<alias>($/) { make self.frame.dealias(~$<name>) }
 
-    method constexpr:sym<str>($/) { make MAST::SVal.new(value => ~$/[0]) }
+    method constexpr:sym<str>($/) {
+        my $value := subst(~$/[0], /\\(<[0..9a..zA..Z]>**2)/, &to_char, :global);
+        make MAST::SVal.new(:$value);
+    }
     method constexpr:sym<cstr>($/) { make MAST::SVal.new(value => ~$<name>) }
     method constexpr:sym<num>($/) { make MAST::NVal.new(value => +~$/) }
     method constexpr:sym<int>($/) { make MAST::IVal.new(value => +~$/) }
